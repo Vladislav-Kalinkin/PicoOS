@@ -121,7 +121,6 @@ pub fn set_current_task(id: usize) {
 #[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum DispatchResult {
-    ResumedTask,
     NoRunnableTask,
     Failed,
 }
@@ -188,9 +187,7 @@ fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
 
     crate::drivers::uart::write_line("  scheduler resume path result: OK");
 
-    crate::kernel::task::test::test_resume_preflight_check();
-
-    DispatchResult::ResumedTask
+    restore_selected_task_checked(task_id);
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
@@ -270,4 +267,42 @@ fn validate_resume_frame(task_id: usize) -> bool {
     }
 
     ok
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn restore_selected_task_checked(task_id: usize) -> ! {
+    crate::drivers::uart::write_line("  scheduler restore path: checked restore");
+
+    let Some(frame) = crate::kernel::task::table::get_task_resume_frame(task_id) else {
+        crate::drivers::uart::write_line("  scheduler restore failed: no resume frame");
+        crate::arch::halt();
+    };
+
+    if !validate_resume_frame(task_id) {
+        crate::drivers::uart::write_line("  scheduler restore failed: invalid resume frame");
+        crate::arch::halt();
+    }
+
+    crate::drivers::uart::write_str("  restore task: ");
+    crate::kernel::task::table::print_task_name_by_id(task_id);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("  restore sp: ");
+    crate::drivers::uart::write_hex_u64(frame.sp);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("  restore resume_pc: ");
+    crate::drivers::uart::write_hex_u64(frame.resume_pc);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("  restore return_pc: ");
+    crate::drivers::uart::write_hex_u64(frame.return_pc);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_line("  scheduler restore path result: OK");
+    crate::drivers::uart::write_line("  calling arch restore from scheduler path...");
+
+    unsafe {
+        crate::arch::restore_verified_resume_frame(frame);
+    }
 }
