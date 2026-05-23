@@ -134,6 +134,13 @@ pub enum RunOnceResult {
     Failed,
 }
 
+#[cfg(feature = "scheduler_run_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RunResult {
+    NoRunnableTask,
+    Failed,
+}
+
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn dispatch_next() -> DispatchResult {
     scheduler_log_line("");
@@ -362,6 +369,23 @@ pub fn run_once() -> RunOnceResult {
             scheduler_log_line("  run_once result: failed");
 
             RunOnceResult::Failed
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_run_test")]
+pub fn run() -> RunResult {
+    scheduler_log_line("");
+    scheduler_log_line("scheduler run:");
+
+    match run_once() {
+        RunOnceResult::NoRunnableTask => {
+            scheduler_log_line("  run result: no runnable task");
+            RunResult::NoRunnableTask
+        }
+        RunOnceResult::Failed => {
+            scheduler_log_line("  run result: failed");
+            RunResult::Failed
         }
     }
 }

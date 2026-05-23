@@ -1038,7 +1038,26 @@ pub fn test_resume_candidate_selection() {
 
             uart::write_line("resume candidate test complete");
 
-            #[cfg(feature = "scheduler_dispatch_test")]
+            #[cfg(feature = "scheduler_run_test")]
+            {
+                uart::write_line("resume candidate selected; delegating to scheduler run");
+
+                match crate::kernel::task::scheduler::run() {
+                    crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
+                        uart::write_line("scheduler run returned: no runnable task");
+                    }
+                    crate::kernel::task::scheduler::RunResult::Failed => {
+                        uart::write_line("scheduler run returned: failed");
+                    }
+                }
+
+                crate::arch::halt();
+            }
+
+            #[cfg(all(
+                feature = "scheduler_dispatch_test",
+                not(feature = "scheduler_run_test")
+            ))]
             {
                 uart::write_line("resume candidate selected; delegating to scheduler run_once");
 
@@ -1182,7 +1201,7 @@ fn real_resume_jump_completion_check() -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  version: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.9");
+    crate::drivers::uart::write_line("  current: 0.1.10");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
