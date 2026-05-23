@@ -129,35 +129,17 @@ pub enum DispatchResult {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn dispatch_next() -> DispatchResult {
-    crate::drivers::uart::write_line("");
-    crate::drivers::uart::write_line("scheduler dispatch_next:");
+    scheduler_log_line("");
+    scheduler_log_line("scheduler dispatch_next:");
 
     let Some(task_id) = crate::kernel::task::table::find_first_resumable_task() else {
-        crate::drivers::uart::write_line("  selected task: none");
+        scheduler_log_line("  selected task: none");
         return DispatchResult::NoRunnableTask;
     };
 
-    crate::drivers::uart::write_str("  selected task: ");
-    crate::kernel::task::table::print_task_name_by_id(task_id);
-    crate::drivers::uart::write_line("");
+    print_dispatch_task_summary(task_id);
 
-    crate::drivers::uart::write_str("  state: ");
-    crate::kernel::task::table::print_task_state_by_id(task_id);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("  can_resume: ");
-    match crate::kernel::task::table::can_task_resume(task_id) {
-        Some(value) => {
-            crate::kernel::task::table::print_yes_no(value);
-            crate::drivers::uart::write_line("");
-        }
-        None => {
-            crate::drivers::uart::write_line("unknown");
-            return DispatchResult::Failed;
-        }
-    }
-
-    crate::drivers::uart::write_line("  dispatch action: resume task");
+    scheduler_log_line("  dispatch action: resume task");
 
     resume_selected_task_checked(task_id)
 }
@@ -194,54 +176,17 @@ fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn validate_resume_frame(task_id: usize) -> Option<TaskCpuContext> {
-    crate::drivers::uart::write_line("  scheduler validate resume frame:");
+    scheduler_log_line("  scheduler validate resume frame:");
 
     let Some(frame) = crate::kernel::task::table::get_task_resume_frame(task_id) else {
-        crate::drivers::uart::write_line("    frame present: no");
-        crate::drivers::uart::write_line("    result: FAILED");
+        scheduler_log_line("    frame present: no");
+        scheduler_log_line("    result: FAILED");
         return None;
     };
 
     let sp_inside = crate::kernel::task::table::is_sp_inside_task_stack(task_id, frame.sp);
     let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(frame.resume_pc);
     let return_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(frame.return_pc);
-
-    crate::drivers::uart::write_str("    frame present: ");
-    crate::kernel::task::table::print_yes_no(true);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    frame valid: ");
-    crate::kernel::task::table::print_yes_no(frame.is_valid());
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    frame SP: ");
-    crate::drivers::uart::write_hex_u64(frame.sp);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    frame resume_pc: ");
-    crate::drivers::uart::write_hex_u64(frame.resume_pc);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    frame return_pc: ");
-    crate::drivers::uart::write_hex_u64(frame.return_pc);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    frame SP inside task stack: ");
-    match sp_inside {
-        Some(value) => {
-            crate::kernel::task::table::print_yes_no(value);
-            crate::drivers::uart::write_line("");
-        }
-        None => crate::drivers::uart::write_line("unknown"),
-    }
-
-    crate::drivers::uart::write_str("    frame resume_pc inside kernel text: ");
-    crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    frame return_pc inside kernel text: ");
-    crate::kernel::task::table::print_yes_no(return_pc_inside_text);
-    crate::drivers::uart::write_line("");
 
     let context_consistent = match (
         crate::kernel::task::table::get_task_last_task_sp(task_id),
@@ -251,9 +196,13 @@ fn validate_resume_frame(task_id: usize) -> Option<TaskCpuContext> {
         _ => false,
     };
 
-    crate::drivers::uart::write_str("    frame consistent with task record: ");
-    crate::kernel::task::table::print_yes_no(context_consistent);
-    crate::drivers::uart::write_line("");
+    print_resume_frame_summary(
+        frame,
+        sp_inside,
+        resume_pc_inside_text,
+        return_pc_inside_text,
+        context_consistent,
+    );
 
     let ok = frame.is_valid()
         && matches!(sp_inside, Some(true))
@@ -261,40 +210,130 @@ fn validate_resume_frame(task_id: usize) -> Option<TaskCpuContext> {
         && return_pc_inside_text
         && context_consistent;
 
-    crate::drivers::uart::write_str("    result: ");
+    scheduler_log_str("    result: ");
     if ok {
-        crate::drivers::uart::write_line("OK");
+        scheduler_log_line("OK");
         Some(frame)
     } else {
-        crate::drivers::uart::write_line("FAILED");
+        scheduler_log_line("FAILED");
         None
     }
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
-    crate::drivers::uart::write_line("  scheduler restore path: checked restore");
+    scheduler_log_line("  scheduler restore path: checked restore");
 
-    crate::drivers::uart::write_str("  restore task: ");
+    scheduler_log_str("  restore task: ");
     crate::kernel::task::table::print_task_name_by_id(task_id);
-    crate::drivers::uart::write_line("");
+    scheduler_log_line("");
 
-    crate::drivers::uart::write_str("  restore sp: ");
-    crate::drivers::uart::write_hex_u64(frame.sp);
-    crate::drivers::uart::write_line("");
+    scheduler_log_str("  restore sp: ");
+    scheduler_log_hex(frame.sp);
+    scheduler_log_line("");
 
-    crate::drivers::uart::write_str("  restore resume_pc: ");
-    crate::drivers::uart::write_hex_u64(frame.resume_pc);
-    crate::drivers::uart::write_line("");
+    scheduler_log_str("  restore resume_pc: ");
+    scheduler_log_hex(frame.resume_pc);
+    scheduler_log_line("");
 
-    crate::drivers::uart::write_str("  restore return_pc: ");
-    crate::drivers::uart::write_hex_u64(frame.return_pc);
-    crate::drivers::uart::write_line("");
+    scheduler_log_str("  restore return_pc: ");
+    scheduler_log_hex(frame.return_pc);
+    scheduler_log_line("");
 
-    crate::drivers::uart::write_line("  scheduler restore path result: OK");
-    crate::drivers::uart::write_line("  calling arch restore from scheduler path...");
+    scheduler_log_line("  scheduler restore path result: OK");
+    scheduler_log_line("  calling arch restore from scheduler path...");
 
     unsafe {
         crate::arch::restore_verified_resume_frame(frame);
     }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn print_dispatch_task_summary(task_id: usize) {
+    scheduler_log_str("  selected task: ");
+    crate::kernel::task::table::print_task_name_by_id(task_id);
+    scheduler_log_line("");
+
+    scheduler_log_str("  state: ");
+    crate::kernel::task::table::print_task_state_by_id(task_id);
+    scheduler_log_line("");
+
+    scheduler_log_str("  can_resume: ");
+    match crate::kernel::task::table::can_task_resume(task_id) {
+        Some(value) => {
+            scheduler_log_yes_no(value);
+            scheduler_log_line("");
+        }
+        None => scheduler_log_line("unknown"),
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn print_resume_frame_summary(
+    frame: TaskCpuContext,
+    sp_inside: Option<bool>,
+    resume_pc_inside_text: bool,
+    return_pc_inside_text: bool,
+    context_consistent: bool,
+) {
+    scheduler_log_str("    frame present: ");
+    scheduler_log_yes_no(true);
+    scheduler_log_line("");
+
+    scheduler_log_str("    frame valid: ");
+    scheduler_log_yes_no(frame.is_valid());
+    scheduler_log_line("");
+
+    scheduler_log_str("    frame SP: ");
+    scheduler_log_hex(frame.sp);
+    scheduler_log_line("");
+
+    scheduler_log_str("    frame resume_pc: ");
+    scheduler_log_hex(frame.resume_pc);
+    scheduler_log_line("");
+
+    scheduler_log_str("    frame return_pc: ");
+    scheduler_log_hex(frame.return_pc);
+    scheduler_log_line("");
+
+    scheduler_log_str("    frame SP inside task stack: ");
+    match sp_inside {
+        Some(value) => {
+            scheduler_log_yes_no(value);
+            scheduler_log_line("");
+        }
+        None => scheduler_log_line("unknown"),
+    }
+
+    scheduler_log_str("    frame resume_pc inside kernel text: ");
+    scheduler_log_yes_no(resume_pc_inside_text);
+    scheduler_log_line("");
+
+    scheduler_log_str("    frame return_pc inside kernel text: ");
+    scheduler_log_yes_no(return_pc_inside_text);
+    scheduler_log_line("");
+
+    scheduler_log_str("    frame consistent with task record: ");
+    scheduler_log_yes_no(context_consistent);
+    scheduler_log_line("");
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn scheduler_log_line(message: &str) {
+    crate::drivers::uart::write_line(message);
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn scheduler_log_str(message: &str) {
+    crate::drivers::uart::write_str(message);
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn scheduler_log_hex(value: u64) {
+    crate::drivers::uart::write_hex_u64(value);
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn scheduler_log_yes_no(value: bool) {
+    crate::kernel::task::table::print_yes_no(value);
 }
