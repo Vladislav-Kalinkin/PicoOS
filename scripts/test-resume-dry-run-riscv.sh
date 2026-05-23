@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cargo clean
-cargo build --target riscv64gc-unknown-none-elf --features "task_yield_test resume_candidate_test resume_preflight_test resume_dry_run_test"
+cargo build --features "task_yield_test resume_candidate_test resume_preflight_test resume_dry_run_test"
 
 qemu-system-riscv64 \
   -M virt \

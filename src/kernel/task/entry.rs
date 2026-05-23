@@ -86,6 +86,7 @@ pub fn yield_now() {
     crate::drivers::uart::write_line("yield_now: resumed after arch yield");
 }
 
+#[allow(dead_code)]
 fn print_returning_yield_task_layer_precheck(
     task_sp: u64,
     resume_pc: u64,

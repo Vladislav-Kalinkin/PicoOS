@@ -2,15 +2,15 @@ use crate::drivers::uart;
 
 pub fn print_boot_banner() {
     uart::write_line("================================");
-    uart::write_line("PicoOS 1.5");
-    uart::write_line("early multiarch kernel");
+    uart::write_line("PicoOS RISC-V");
+    uart::write_line("early RISC-V kernel");
     uart::write_line("================================");
 }
 
 pub fn print_capabilities() {
     uart::write_line("");
     uart::write_line("kernel capabilities:");
-    uart::write_line("- multiarch: aarch64 / riscv64");
+    uart::write_line("- architecture: riscv64");
     uart::write_line("- UART console");
     uart::write_line("- exception/trap handling");
     uart::write_line("- timer interrupts");

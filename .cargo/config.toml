@@ -1,11 +1,5 @@
 [build]
-target = "aarch64-unknown-none"
-
-[target.aarch64-unknown-none]
-rustflags = [
-  "-C", "link-arg=-Tlinker-aarch64.ld",
-  "-C", "relocation-model=static",
-]
+target = "riscv64gc-unknown-none-elf"
 
 [target.riscv64gc-unknown-none-elf]
 rustflags = [

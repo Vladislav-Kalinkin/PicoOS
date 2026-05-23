@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cargo clean
-cargo build --target riscv64gc-unknown-none-elf --features scheduler_driven_task_test
+cargo build --features scheduler_driven_task_test
 
 qemu-system-riscv64 \
   -M virt \

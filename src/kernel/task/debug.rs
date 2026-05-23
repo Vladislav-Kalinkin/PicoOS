@@ -11,8 +11,6 @@ static mut DEBUG_CURRENT_TASK_ID: usize = 0;
 static mut DEBUG_LAST_TASK_SP: u64 = 0;
 static mut DEBUG_TASK_RESUME_PC: u64 = 0;
 
-#[cfg(target_arch = "aarch64")]
-static mut DEBUG_ARM64_X19_X30: [u64; 12] = [0; 12];
 
 pub fn set_debug_last_task_sp(sp: u64) {
     unsafe {
@@ -73,7 +71,6 @@ pub extern "C" fn task_return_point() -> ! {
     crate::kernel::task::test::handle_task_return_for_debug_test();
 
     match debug_task_run_stage() {
-        #[cfg(feature = "sequential_task_test")]
         #[cfg(feature = "sequential_task_test")]
         1 => crate::kernel::task::test::continue_sequential_task_test_after_worker_a(),
 
@@ -184,16 +181,4 @@ pub fn print_debug_task_resume_context() {
     crate::drivers::uart::write_str("yield current SP: ");
     crate::drivers::uart::write_hex_u64(task_sp);
     crate::drivers::uart::write_line("");
-}
-
-#[cfg(target_arch = "aarch64")]
-pub fn set_debug_arm64_x19_x30(value: [u64; 12]) {
-    unsafe {
-        DEBUG_ARM64_X19_X30 = value;
-    }
-}
-
-#[cfg(target_arch = "aarch64")]
-pub fn debug_arm64_x19_x30() -> [u64; 12] {
-    unsafe { DEBUG_ARM64_X19_X30 }
 }

@@ -262,10 +262,6 @@ pub fn handle_task_return_for_debug_test() {
             cpu_context.ra = cpu_context.resume_pc;
         }
 
-        #[cfg(target_arch = "aarch64")]
-        {
-            cpu_context.x19_x30[11] = cpu_context.resume_pc;
-        }
     }
 
     crate::kernel::task::table::set_task_cpu_context(task_id, cpu_context);

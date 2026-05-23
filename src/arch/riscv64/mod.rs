@@ -404,6 +404,7 @@ unsafe fn restore_resume_frame_asm_stub(
     }
 }
 
+#[allow(dead_code)]
 #[inline(never)]
 pub unsafe fn yield_to_kernel_and_return(
     task_sp: u64,

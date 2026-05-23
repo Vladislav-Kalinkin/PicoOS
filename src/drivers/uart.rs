@@ -1,16 +1,19 @@
 use crate::drivers::mmio;
 use crate::platform;
 
-#[allow(dead_code)]
-pub fn init() {}
-
-#[inline(always)]
 pub fn putc(byte: u8) {
-    mmio::write32(platform::UART0_BASE, byte as u32);
+    unsafe {
+        mmio::write32(platform::UART0_BASE, byte as u32);
+    }
 }
 
-pub fn write_str(text: &str) {
-    for byte in text.bytes() {
+#[allow(dead_code)]
+pub fn write_byte(byte: u8) {
+    putc(byte);
+}
+
+pub fn write_str(s: &str) {
+    for byte in s.bytes() {
         if byte == b'\n' {
             putc(b'\r');
         }
@@ -19,23 +22,32 @@ pub fn write_str(text: &str) {
     }
 }
 
-pub fn write_line(text: &str) {
-    write_str(text);
+pub fn write_line(s: &str) {
+    write_str(s);
     write_str("\n");
 }
 
 pub fn write_hex_u64(value: u64) {
     write_str("0x");
 
-    for i in (0..16).rev() {
-        let nibble = ((value >> (i * 4)) & 0xF) as u8;
+    let mut shift = 60;
 
-        let ch = match nibble {
-            0..=9 => b'0' + nibble,
-            _ => b'A' + (nibble - 10),
+    loop {
+        let digit = ((value >> shift) & 0xF) as u8;
+
+        let ch = if digit < 10 {
+            b'0' + digit
+        } else {
+            b'A' + (digit - 10)
         };
 
         putc(ch);
+
+        if shift == 0 {
+            break;
+        }
+
+        shift -= 4;
     }
 }
 
@@ -46,16 +58,16 @@ pub fn write_dec_u64(mut value: u64) {
     }
 
     let mut buffer = [0u8; 20];
-    let mut index = 0;
+    let mut index = buffer.len();
 
     while value > 0 {
+        index -= 1;
         buffer[index] = b'0' + (value % 10) as u8;
         value /= 10;
-        index += 1;
     }
 
-    while index > 0 {
-        index -= 1;
+    while index < buffer.len() {
         putc(buffer[index]);
+        index += 1;
     }
 }

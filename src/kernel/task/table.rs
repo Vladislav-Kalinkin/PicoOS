@@ -541,7 +541,6 @@ fn find_slot_by_id(id: usize) -> Option<usize> {
 }
 
 // Keep this manual copy for early bare-metal safety.
-// Slice copy/fill caused an early ARM64 exception during task creation.
 #[allow(clippy::manual_memcpy)]
 fn copy_name(dst: &mut [u8; TASK_NAME_LEN], name: &str) {
     let mut i = 0;

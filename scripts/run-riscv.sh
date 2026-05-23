@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cargo clean
-cargo build --target riscv64gc-unknown-none-elf
+cargo build
 
 qemu-system-riscv64 \
   -M virt \
