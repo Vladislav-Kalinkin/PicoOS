@@ -27,6 +27,12 @@ Current working milestone:
 - repeated yield/resume test
 - scheduler-oriented resume loop test
 
+## Versioning
+
+PicoOS is currently in the `0.x` development series.
+
+`1.0.0` is reserved for the first full release. The current `0.1.0` version marks the RISC-V-only baseline after removing the experimental ARM64 code from the main branch.
+
 ## Architecture
 
 Current target:

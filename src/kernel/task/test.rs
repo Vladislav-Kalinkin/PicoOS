@@ -261,7 +261,6 @@ pub fn handle_task_return_for_debug_test() {
         {
             cpu_context.ra = cpu_context.resume_pc;
         }
-
     }
 
     crate::kernel::task::table::set_task_cpu_context(task_id, cpu_context);
@@ -1157,11 +1156,11 @@ fn real_resume_jump_completion_check() -> bool {
     feature = "scheduler_resume_loop_test"
 ))]
 fn print_riscv_cooperative_resume_milestone() {
-    crate::drivers::uart::write_line("");
-    crate::drivers::uart::write_line("PicoOS 1.0 milestone:");
-    crate::drivers::uart::write_line("  RISC-V cooperative task resume: OK");
+    crate::drivers::uart::write_line("PicoOS milestone:");
+    crate::drivers::uart::write_line("  version: 0.1.0");
+    crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
+    crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
-    crate::drivers::uart::write_line("  task exit after resume: OK");
     crate::drivers::uart::write_line("  scheduler-oriented resume loop: OK");
 }
 
