@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2021"
 
 [[bin]]
@@ -47,6 +47,10 @@ scheduler_dispatch_selftest = [
 scheduler_run_selftest = [
   "scheduler_run_once_selftest",
   "scheduler_run_test",
+]
+
+scheduler_runtime_selftest = [
+  "scheduler_run_selftest",
 ]
 
 task_resume_selftest = [
