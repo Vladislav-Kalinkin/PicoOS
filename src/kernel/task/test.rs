@@ -1193,21 +1193,3 @@ fn two_yielding_task() {
 
     crate::kernel::task::task_exit();
 }
-
-#[cfg(feature = "scheduler_dispatch_test")]
-pub fn test_scheduler_dispatch_next() {
-    crate::drivers::uart::write_line("");
-    crate::drivers::uart::write_line("scheduler dispatch_next test:");
-
-    match crate::kernel::task::scheduler::dispatch_next() {
-        crate::kernel::task::scheduler::DispatchResult::ResumedTask => {
-            crate::drivers::uart::write_line("dispatch result: resumed task");
-        }
-        crate::kernel::task::scheduler::DispatchResult::NoRunnableTask => {
-            crate::drivers::uart::write_line("dispatch result: no runnable task");
-        }
-        crate::kernel::task::scheduler::DispatchResult::Failed => {
-            crate::drivers::uart::write_line("dispatch result: failed");
-        }
-    }
-}

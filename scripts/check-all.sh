@@ -28,5 +28,13 @@ echo "== Clippy RISC-V task resume selftest =="
 cargo clippy --features "task_resume_selftest" -- -D warnings
 
 echo
+echo "== Build RISC-V scheduler dispatch selftest =="
+cargo build --features "scheduler_dispatch_selftest"
+
+echo
+echo "== Clippy RISC-V scheduler dispatch selftest =="
+cargo clippy --features "scheduler_dispatch_selftest" -- -D warnings
+
+echo
 echo "== All checks passed =="
 cargo clean

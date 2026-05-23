@@ -181,55 +181,93 @@ fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
         }
     }
 
-    match crate::kernel::task::table::get_task_resume_frame(task_id) {
-        Some(frame) => {
-            let sp_inside = crate::kernel::task::table::is_sp_inside_task_stack(task_id, frame.sp);
-            let resume_pc_inside_text =
-                crate::kernel::memory::is_inside_kernel_text(frame.resume_pc);
-            let return_pc_inside_text =
-                crate::kernel::memory::is_inside_kernel_text(frame.return_pc);
-
-            crate::drivers::uart::write_str("  frame valid: ");
-            crate::kernel::task::table::print_yes_no(frame.is_valid());
-            crate::drivers::uart::write_line("");
-
-            crate::drivers::uart::write_str("  frame SP inside task stack: ");
-            match sp_inside {
-                Some(value) => {
-                    crate::kernel::task::table::print_yes_no(value);
-                    crate::drivers::uart::write_line("");
-                }
-                None => crate::drivers::uart::write_line("unknown"),
-            }
-
-            crate::drivers::uart::write_str("  frame resume_pc inside kernel text: ");
-            crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
-            crate::drivers::uart::write_line("");
-
-            crate::drivers::uart::write_str("  frame return_pc inside kernel text: ");
-            crate::kernel::task::table::print_yes_no(return_pc_inside_text);
-            crate::drivers::uart::write_line("");
-
-            let ok = frame.is_valid()
-                && matches!(sp_inside, Some(true))
-                && resume_pc_inside_text
-                && return_pc_inside_text;
-
-            crate::drivers::uart::write_str("  scheduler resume path result: ");
-            if ok {
-                crate::drivers::uart::write_line("OK");
-            } else {
-                crate::drivers::uart::write_line("FAILED");
-                return DispatchResult::Failed;
-            }
-        }
-        None => {
-            crate::drivers::uart::write_line("  resume blocked: no resume frame");
-            return DispatchResult::Failed;
-        }
+    if !validate_resume_frame(task_id) {
+        crate::drivers::uart::write_line("  scheduler resume path result: FAILED");
+        return DispatchResult::Failed;
     }
+
+    crate::drivers::uart::write_line("  scheduler resume path result: OK");
 
     crate::kernel::task::test::test_resume_preflight_check();
 
     DispatchResult::ResumedTask
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn validate_resume_frame(task_id: usize) -> bool {
+    crate::drivers::uart::write_line("  scheduler validate resume frame:");
+
+    let Some(frame) = crate::kernel::task::table::get_task_resume_frame(task_id) else {
+        crate::drivers::uart::write_line("    frame present: no");
+        crate::drivers::uart::write_line("    result: FAILED");
+        return false;
+    };
+
+    let sp_inside = crate::kernel::task::table::is_sp_inside_task_stack(task_id, frame.sp);
+    let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(frame.resume_pc);
+    let return_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(frame.return_pc);
+
+    crate::drivers::uart::write_str("    frame present: ");
+    crate::kernel::task::table::print_yes_no(true);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    frame valid: ");
+    crate::kernel::task::table::print_yes_no(frame.is_valid());
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    frame SP: ");
+    crate::drivers::uart::write_hex_u64(frame.sp);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    frame resume_pc: ");
+    crate::drivers::uart::write_hex_u64(frame.resume_pc);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    frame return_pc: ");
+    crate::drivers::uart::write_hex_u64(frame.return_pc);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    frame SP inside task stack: ");
+    match sp_inside {
+        Some(value) => {
+            crate::kernel::task::table::print_yes_no(value);
+            crate::drivers::uart::write_line("");
+        }
+        None => crate::drivers::uart::write_line("unknown"),
+    }
+
+    crate::drivers::uart::write_str("    frame resume_pc inside kernel text: ");
+    crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    frame return_pc inside kernel text: ");
+    crate::kernel::task::table::print_yes_no(return_pc_inside_text);
+    crate::drivers::uart::write_line("");
+
+    let context_consistent = match (
+        crate::kernel::task::table::get_task_last_task_sp(task_id),
+        crate::kernel::task::table::get_task_last_kernel_return_pc(task_id),
+    ) {
+        (Some(last_sp), Some(kernel_pc)) => frame.sp == last_sp && frame.return_pc == kernel_pc,
+        _ => false,
+    };
+
+    crate::drivers::uart::write_str("    frame consistent with task record: ");
+    crate::kernel::task::table::print_yes_no(context_consistent);
+    crate::drivers::uart::write_line("");
+
+    let ok = frame.is_valid()
+        && matches!(sp_inside, Some(true))
+        && resume_pc_inside_text
+        && return_pc_inside_text
+        && context_consistent;
+
+    crate::drivers::uart::write_str("    result: ");
+    if ok {
+        crate::drivers::uart::write_line("OK");
+    } else {
+        crate::drivers::uart::write_line("FAILED");
+    }
+
+    ok
 }
