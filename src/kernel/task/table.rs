@@ -19,11 +19,11 @@ pub enum TaskState {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TaskReturnKind {
     None,
-    Exit,
     Yield,
+    Exit,
 }
 
 #[derive(Clone, Copy)]

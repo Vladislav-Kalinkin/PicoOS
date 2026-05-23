@@ -416,7 +416,7 @@ pub fn handle_task_return() -> TaskReturnHandleResult {
     crate::kernel::task::table::print_task_state_by_id(task_id);
     scheduler_log_line("");
 
-    scheduler_log_str("  last_return: ");
+    scheduler_log_str("  return reason: ");
     crate::kernel::task::table::print_task_return_kind_by_id(task_id);
     scheduler_log_line("");
 
