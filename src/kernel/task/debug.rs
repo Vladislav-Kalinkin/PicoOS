@@ -11,7 +11,6 @@ static mut DEBUG_CURRENT_TASK_ID: usize = 0;
 static mut DEBUG_LAST_TASK_SP: u64 = 0;
 static mut DEBUG_TASK_RESUME_PC: u64 = 0;
 
-
 pub fn set_debug_last_task_sp(sp: u64) {
     unsafe {
         DEBUG_LAST_TASK_SP = sp;
@@ -86,9 +85,17 @@ pub extern "C" fn task_return_point() -> ! {
             uart::write_line("back in kernel after yield test");
             uart::write_line("yield test complete");
 
-            #[cfg(feature = "resume_candidate_test")]
+            #[cfg(feature = "scheduler_reentry_test")]
             {
-                crate::kernel::task::test::test_resume_candidate_selection();
+                crate::kernel::task::test::handle_scheduler_reentry_after_task_return();
+            }
+
+            #[cfg(all(
+                feature = "resume_candidate_test",
+                not(feature = "scheduler_reentry_test")
+            ))]
+            {
+                crate::kernel::task::test_resume_candidate_selection();
             }
 
             #[cfg(feature = "resume_preflight_test")]
