@@ -32,3 +32,15 @@ real_resume_restore_jump = []
 two_yield_task_test = []
 scheduler_resume_loop_test = []
 verbose_resume_debug = []
+
+task_resume_selftest = [
+  "task_yield_test",
+  "resume_candidate_test",
+  "resume_preflight_test",
+  "resume_dry_run_test",
+  "resume_restore_test",
+  "real_resume_restore_test",
+  "real_resume_restore_jump",
+  "two_yield_task_test",
+  "scheduler_resume_loop_test",
+]
