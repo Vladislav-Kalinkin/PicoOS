@@ -9,7 +9,7 @@ pub const TASK_NAME_LEN: usize = 16;
 pub type TaskEntry = fn();
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
     Empty,
     Ready,
@@ -24,6 +24,16 @@ pub enum TaskReturnKind {
     None,
     Yield,
     Exit,
+}
+
+#[allow(dead_code)]
+#[cfg(feature = "scheduler_reentry_test")]
+#[derive(Clone, Copy)]
+pub struct TaskReturnSnapshot {
+    pub task_id: usize,
+    pub state: TaskState,
+    pub last_return: TaskReturnKind,
+    pub can_resume: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -852,4 +862,18 @@ pub fn print_task_resume_frame_by_id(id: usize) {
         Some(frame) => crate::kernel::task::cpu_context::print_cpu_context(frame),
         None => uart::write_str("none"),
     }
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
+    let state = get_task_state(id)?;
+    let last_return = get_task_return_kind(id)?;
+    let can_resume = can_task_resume(id)?;
+
+    Some(TaskReturnSnapshot {
+        task_id: id,
+        state,
+        last_return,
+        can_resume,
+    })
 }

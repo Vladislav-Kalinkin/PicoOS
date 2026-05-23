@@ -1200,7 +1200,7 @@ fn real_resume_jump_completion_check() -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.15");
+    crate::drivers::uart::write_line("  current: 0.1.17");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1252,10 +1252,18 @@ fn print_resume_candidate_complete() {
 
 #[cfg(feature = "scheduler_reentry_test")]
 pub fn handle_scheduler_reentry_after_task_return() {
+    const WORKER_A_TASK_ID: usize = 1;
+
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("scheduler re-entry after task return:");
 
-    match crate::kernel::task::scheduler::handle_task_return() {
+    let Some(snapshot) = crate::kernel::task::table::get_task_return_snapshot(WORKER_A_TASK_ID)
+    else {
+        crate::drivers::uart::write_line("scheduler re-entry result: missing task return snapshot");
+        crate::arch::halt();
+    };
+
+    match crate::kernel::task::scheduler::handle_task_return(snapshot) {
         crate::kernel::task::scheduler::TaskReturnHandleResult::NoRunnableTask => {
             crate::drivers::uart::write_line("  action: completion check");
 

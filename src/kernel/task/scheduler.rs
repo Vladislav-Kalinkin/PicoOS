@@ -2,7 +2,8 @@ use crate::drivers::uart;
 #[cfg(feature = "scheduler_dispatch_test")]
 use crate::kernel::task::cpu_context::TaskCpuContext;
 use crate::kernel::task::table as task;
-
+#[cfg(feature = "scheduler_reentry_test")]
+use crate::kernel::task::table::TaskReturnSnapshot;
 static mut CURRENT_TASK_ID: Option<usize> = None;
 
 pub fn init() {
@@ -398,38 +399,54 @@ pub fn run() -> RunResult {
 }
 
 #[cfg(feature = "scheduler_reentry_test")]
-pub fn handle_task_return() -> TaskReturnHandleResult {
+pub fn handle_task_return(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("");
     scheduler_log_line("scheduler handle_task_return:");
 
-    let Some(task_id) = crate::kernel::task::table::find_first_resumable_task() else {
-        scheduler_log_line("  next resumable task: none");
-        scheduler_log_line("  result: no runnable task");
-        return TaskReturnHandleResult::NoRunnableTask;
-    };
+    print_task_return_snapshot(snapshot);
 
-    scheduler_log_str("  next resumable task: ");
-    crate::kernel::task::table::print_task_name_by_id(task_id);
-    scheduler_log_line("");
+    match snapshot.last_return {
+        crate::kernel::task::table::TaskReturnKind::Yield => {
+            scheduler_log_line("  return action: yield -> scheduler::run");
 
-    scheduler_log_str("  state: ");
-    crate::kernel::task::table::print_task_state_by_id(task_id);
-    scheduler_log_line("");
-
-    scheduler_log_str("  return reason: ");
-    crate::kernel::task::table::print_task_return_kind_by_id(task_id);
-    scheduler_log_line("");
-
-    scheduler_log_line("  action: scheduler::run");
-
-    match run() {
-        RunResult::NoRunnableTask => {
-            scheduler_log_line("  scheduler run returned: no runnable task");
+            match run() {
+                RunResult::NoRunnableTask => {
+                    scheduler_log_line("  scheduler run returned: no runnable task");
+                    TaskReturnHandleResult::NoRunnableTask
+                }
+                RunResult::Failed => {
+                    scheduler_log_line("  scheduler run returned: failed");
+                    TaskReturnHandleResult::Failed
+                }
+            }
+        }
+        crate::kernel::task::table::TaskReturnKind::Exit => {
+            scheduler_log_line("  return action: exit -> no resume for returned task");
+            scheduler_log_line("  result: no runnable task");
             TaskReturnHandleResult::NoRunnableTask
         }
-        RunResult::Failed => {
-            scheduler_log_line("  scheduler run returned: failed");
+        crate::kernel::task::table::TaskReturnKind::None => {
+            scheduler_log_line("  return action: none -> failed");
             TaskReturnHandleResult::Failed
         }
     }
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+fn print_task_return_snapshot(snapshot: TaskReturnSnapshot) {
+    scheduler_log_str("  return snapshot task: ");
+    crate::kernel::task::table::print_task_name_by_id(snapshot.task_id);
+    scheduler_log_line("");
+
+    scheduler_log_str("  return snapshot state: ");
+    crate::kernel::task::table::print_task_state_by_id(snapshot.task_id);
+    scheduler_log_line("");
+
+    scheduler_log_str("  return snapshot reason: ");
+    crate::kernel::task::table::print_task_return_kind_by_id(snapshot.task_id);
+    scheduler_log_line("");
+
+    scheduler_log_str("  return snapshot can_resume: ");
+    crate::kernel::task::table::print_yes_no(snapshot.can_resume);
+    scheduler_log_line("");
 }
