@@ -992,8 +992,7 @@ fn resume_restore_precheck(task_id: usize) -> bool {
 
 #[cfg(feature = "resume_candidate_test")]
 pub fn test_resume_candidate_selection() {
-    uart::write_line("");
-    uart::write_line("resume candidate test:");
+    print_resume_candidate_header();
 
     match crate::kernel::task::table::find_first_resumable_task() {
         Some(task_id) => {
@@ -1083,7 +1082,7 @@ pub fn test_resume_candidate_selection() {
         }
         None => {
             uart::write_line("selected resumable task: none");
-            uart::write_line("resume candidate test complete");
+            print_resume_candidate_complete();
 
             #[cfg(all(
                 feature = "scheduler_resume_loop_test",
@@ -1200,7 +1199,7 @@ fn real_resume_jump_completion_check() -> bool {
 ))]
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
-    crate::drivers::uart::write_line("  version: 0.1.0");
+    crate::drivers::uart::write_line("  baseline: 0.1.0");
     crate::drivers::uart::write_line("  current: 0.1.10");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1221,4 +1220,32 @@ fn two_yielding_task() {
     crate::drivers::uart::write_line("two_yielding_task: step 3");
 
     crate::kernel::task::task_exit();
+}
+
+#[cfg(feature = "resume_candidate_test")]
+fn print_resume_candidate_header() {
+    crate::drivers::uart::write_line("");
+
+    #[cfg(feature = "scheduler_run_test")]
+    {
+        crate::drivers::uart::write_line("scheduler resume candidate check:");
+    }
+
+    #[cfg(not(feature = "scheduler_run_test"))]
+    {
+        crate::drivers::uart::write_line("resume candidate test:");
+    }
+}
+
+#[cfg(feature = "resume_candidate_test")]
+fn print_resume_candidate_complete() {
+    #[cfg(feature = "scheduler_run_test")]
+    {
+        crate::drivers::uart::write_line("scheduler resume candidate check complete");
+    }
+
+    #[cfg(not(feature = "scheduler_run_test"))]
+    {
+        crate::drivers::uart::write_line("resume candidate test complete");
+    }
 }
