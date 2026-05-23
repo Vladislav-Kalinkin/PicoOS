@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 
 [[bin]]
@@ -32,7 +32,12 @@ real_resume_restore_jump = []
 two_yield_task_test = []
 scheduler_resume_loop_test = []
 verbose_resume_debug = []
+scheduler_dispatch_test = []
 
+scheduler_dispatch_selftest = [
+  "task_resume_selftest",
+  "scheduler_dispatch_test",
+]
 task_resume_selftest = [
   "task_yield_test",
   "resume_candidate_test",

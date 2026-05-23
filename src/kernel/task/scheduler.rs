@@ -117,3 +117,48 @@ pub fn set_current_task(id: usize) {
         CURRENT_TASK_ID = Some(id);
     }
 }
+
+#[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DispatchResult {
+    ResumedTask,
+    NoRunnableTask,
+    Failed,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+pub fn dispatch_next() -> DispatchResult {
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("scheduler dispatch_next:");
+
+    let Some(task_id) = crate::kernel::task::table::find_first_resumable_task() else {
+        crate::drivers::uart::write_line("  selected task: none");
+        return DispatchResult::NoRunnableTask;
+    };
+
+    crate::drivers::uart::write_str("  selected task: ");
+    crate::kernel::task::table::print_task_name_by_id(task_id);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("  state: ");
+    crate::kernel::task::table::print_task_state_by_id(task_id);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("  can_resume: ");
+    match crate::kernel::task::table::can_task_resume(task_id) {
+        Some(value) => {
+            crate::kernel::task::table::print_yes_no(value);
+            crate::drivers::uart::write_line("");
+        }
+        None => {
+            crate::drivers::uart::write_line("unknown");
+            return DispatchResult::Failed;
+        }
+    }
+
+    crate::drivers::uart::write_line("  dispatch action: resume task");
+
+    crate::kernel::task::test::test_resume_preflight_check();
+
+    DispatchResult::ResumedTask
+}
