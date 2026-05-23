@@ -158,6 +158,77 @@ pub fn dispatch_next() -> DispatchResult {
 
     crate::drivers::uart::write_line("  dispatch action: resume task");
 
+    resume_selected_task_checked(task_id)
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
+    crate::drivers::uart::write_line("  scheduler resume path: checked resume");
+
+    crate::drivers::uart::write_str("  resume task: ");
+    crate::kernel::task::table::print_task_name_by_id(task_id);
+    crate::drivers::uart::write_line("");
+
+    match crate::kernel::task::table::can_task_resume(task_id) {
+        Some(true) => {}
+        Some(false) => {
+            crate::drivers::uart::write_line("  resume blocked: task cannot resume");
+            return DispatchResult::Failed;
+        }
+        None => {
+            crate::drivers::uart::write_line("  resume blocked: unknown task");
+            return DispatchResult::Failed;
+        }
+    }
+
+    match crate::kernel::task::table::get_task_resume_frame(task_id) {
+        Some(frame) => {
+            let sp_inside = crate::kernel::task::table::is_sp_inside_task_stack(task_id, frame.sp);
+            let resume_pc_inside_text =
+                crate::kernel::memory::is_inside_kernel_text(frame.resume_pc);
+            let return_pc_inside_text =
+                crate::kernel::memory::is_inside_kernel_text(frame.return_pc);
+
+            crate::drivers::uart::write_str("  frame valid: ");
+            crate::kernel::task::table::print_yes_no(frame.is_valid());
+            crate::drivers::uart::write_line("");
+
+            crate::drivers::uart::write_str("  frame SP inside task stack: ");
+            match sp_inside {
+                Some(value) => {
+                    crate::kernel::task::table::print_yes_no(value);
+                    crate::drivers::uart::write_line("");
+                }
+                None => crate::drivers::uart::write_line("unknown"),
+            }
+
+            crate::drivers::uart::write_str("  frame resume_pc inside kernel text: ");
+            crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
+            crate::drivers::uart::write_line("");
+
+            crate::drivers::uart::write_str("  frame return_pc inside kernel text: ");
+            crate::kernel::task::table::print_yes_no(return_pc_inside_text);
+            crate::drivers::uart::write_line("");
+
+            let ok = frame.is_valid()
+                && matches!(sp_inside, Some(true))
+                && resume_pc_inside_text
+                && return_pc_inside_text;
+
+            crate::drivers::uart::write_str("  scheduler resume path result: ");
+            if ok {
+                crate::drivers::uart::write_line("OK");
+            } else {
+                crate::drivers::uart::write_line("FAILED");
+                return DispatchResult::Failed;
+            }
+        }
+        None => {
+            crate::drivers::uart::write_line("  resume blocked: no resume frame");
+            return DispatchResult::Failed;
+        }
+    }
+
     crate::kernel::task::test::test_resume_preflight_check();
 
     DispatchResult::ResumedTask
