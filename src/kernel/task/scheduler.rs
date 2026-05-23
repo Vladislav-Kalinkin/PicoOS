@@ -1,4 +1,6 @@
 use crate::drivers::uart;
+#[cfg(feature = "scheduler_dispatch_test")]
+use crate::kernel::task::cpu_context::TaskCpuContext;
 use crate::kernel::task::table as task;
 
 static mut CURRENT_TASK_ID: Option<usize> = None;
@@ -180,24 +182,24 @@ fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
         }
     }
 
-    if !validate_resume_frame(task_id) {
+    let Some(frame) = validate_resume_frame(task_id) else {
         crate::drivers::uart::write_line("  scheduler resume path result: FAILED");
         return DispatchResult::Failed;
-    }
+    };
 
     crate::drivers::uart::write_line("  scheduler resume path result: OK");
 
-    restore_selected_task_checked(task_id);
+    restore_selected_task_checked(task_id, frame);
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
-fn validate_resume_frame(task_id: usize) -> bool {
+fn validate_resume_frame(task_id: usize) -> Option<TaskCpuContext> {
     crate::drivers::uart::write_line("  scheduler validate resume frame:");
 
     let Some(frame) = crate::kernel::task::table::get_task_resume_frame(task_id) else {
         crate::drivers::uart::write_line("    frame present: no");
         crate::drivers::uart::write_line("    result: FAILED");
-        return false;
+        return None;
     };
 
     let sp_inside = crate::kernel::task::table::is_sp_inside_task_stack(task_id, frame.sp);
@@ -262,26 +264,16 @@ fn validate_resume_frame(task_id: usize) -> bool {
     crate::drivers::uart::write_str("    result: ");
     if ok {
         crate::drivers::uart::write_line("OK");
+        Some(frame)
     } else {
         crate::drivers::uart::write_line("FAILED");
+        None
     }
-
-    ok
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
-fn restore_selected_task_checked(task_id: usize) -> ! {
+fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
     crate::drivers::uart::write_line("  scheduler restore path: checked restore");
-
-    let Some(frame) = crate::kernel::task::table::get_task_resume_frame(task_id) else {
-        crate::drivers::uart::write_line("  scheduler restore failed: no resume frame");
-        crate::arch::halt();
-    };
-
-    if !validate_resume_frame(task_id) {
-        crate::drivers::uart::write_line("  scheduler restore failed: invalid resume frame");
-        crate::arch::halt();
-    }
 
     crate::drivers::uart::write_str("  restore task: ");
     crate::kernel::task::table::print_task_name_by_id(task_id);
