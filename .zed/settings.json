@@ -1,0 +1,16 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "cargo": {
+          "allTargets": false,
+          "target": "aarch64-unknown-none",
+        },
+        "check": {
+          "allTargets": false,
+          "targets": ["aarch64-unknown-none"],
+        },
+      },
+    },
+  },
+}
