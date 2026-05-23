@@ -1200,7 +1200,7 @@ fn real_resume_jump_completion_check() -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.13");
+    crate::drivers::uart::write_line("  current: 0.1.14");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1255,35 +1255,8 @@ pub fn handle_scheduler_reentry_after_task_return() {
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("scheduler re-entry after task return:");
 
-    match crate::kernel::task::table::find_first_resumable_task() {
-        Some(task_id) => {
-            crate::drivers::uart::write_str("  next resumable task: ");
-            crate::kernel::task::table::print_task_name_by_id(task_id);
-            crate::drivers::uart::write_line("");
-
-            crate::drivers::uart::write_str("  state: ");
-            crate::kernel::task::table::print_task_state_by_id(task_id);
-            crate::drivers::uart::write_line("");
-
-            crate::drivers::uart::write_str("  last_return: ");
-            crate::kernel::task::table::print_task_return_kind_by_id(task_id);
-            crate::drivers::uart::write_line("");
-
-            crate::drivers::uart::write_line("  action: scheduler::run");
-
-            match crate::kernel::task::scheduler::run() {
-                crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-                    crate::drivers::uart::write_line("  scheduler run returned: no runnable task");
-                }
-                crate::kernel::task::scheduler::RunResult::Failed => {
-                    crate::drivers::uart::write_line("  scheduler run returned: failed");
-                }
-            }
-
-            crate::arch::halt();
-        }
-        None => {
-            crate::drivers::uart::write_line("  next resumable task: none");
+    match crate::kernel::task::scheduler::handle_task_return() {
+        crate::kernel::task::scheduler::TaskReturnHandleResult::NoRunnableTask => {
             crate::drivers::uart::write_line("  action: completion check");
 
             #[cfg(all(
@@ -1307,6 +1280,10 @@ pub fn handle_scheduler_reentry_after_task_return() {
             }
 
             crate::drivers::uart::write_line("scheduler re-entry result: no runnable task");
+            crate::arch::halt();
+        }
+        crate::kernel::task::scheduler::TaskReturnHandleResult::Failed => {
+            crate::drivers::uart::write_line("scheduler re-entry result: failed");
             crate::arch::halt();
         }
     }

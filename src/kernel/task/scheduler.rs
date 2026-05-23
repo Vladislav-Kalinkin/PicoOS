@@ -141,6 +141,13 @@ pub enum RunResult {
     Failed,
 }
 
+#[cfg(feature = "scheduler_reentry_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TaskReturnHandleResult {
+    NoRunnableTask,
+    Failed,
+}
+
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn dispatch_next() -> DispatchResult {
     scheduler_log_line("");
@@ -386,6 +393,43 @@ pub fn run() -> RunResult {
         RunOnceResult::Failed => {
             scheduler_log_line("  run result: failed");
             RunResult::Failed
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+pub fn handle_task_return() -> TaskReturnHandleResult {
+    scheduler_log_line("");
+    scheduler_log_line("scheduler handle_task_return:");
+
+    let Some(task_id) = crate::kernel::task::table::find_first_resumable_task() else {
+        scheduler_log_line("  next resumable task: none");
+        scheduler_log_line("  result: no runnable task");
+        return TaskReturnHandleResult::NoRunnableTask;
+    };
+
+    scheduler_log_str("  next resumable task: ");
+    crate::kernel::task::table::print_task_name_by_id(task_id);
+    scheduler_log_line("");
+
+    scheduler_log_str("  state: ");
+    crate::kernel::task::table::print_task_state_by_id(task_id);
+    scheduler_log_line("");
+
+    scheduler_log_str("  last_return: ");
+    crate::kernel::task::table::print_task_return_kind_by_id(task_id);
+    scheduler_log_line("");
+
+    scheduler_log_line("  action: scheduler::run");
+
+    match run() {
+        RunResult::NoRunnableTask => {
+            scheduler_log_line("  scheduler run returned: no runnable task");
+            TaskReturnHandleResult::NoRunnableTask
+        }
+        RunResult::Failed => {
+            scheduler_log_line("  scheduler run returned: failed");
+            TaskReturnHandleResult::Failed
         }
     }
 }
