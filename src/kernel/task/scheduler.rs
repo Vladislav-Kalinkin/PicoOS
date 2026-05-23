@@ -128,6 +128,13 @@ pub enum DispatchResult {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RunOnceResult {
+    NoRunnableTask,
+    Failed,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 pub fn dispatch_next() -> DispatchResult {
     scheduler_log_line("");
     scheduler_log_line("scheduler dispatch_next:");
@@ -336,4 +343,25 @@ fn scheduler_log_hex(value: u64) {
 #[cfg(feature = "scheduler_dispatch_test")]
 fn scheduler_log_yes_no(value: bool) {
     crate::kernel::task::table::print_yes_no(value);
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+pub fn run_once() -> RunOnceResult {
+    scheduler_log_line("");
+
+    scheduler_log_line("scheduler run_once:");
+
+    match dispatch_next() {
+        DispatchResult::NoRunnableTask => {
+            scheduler_log_line("  run_once result: no runnable task");
+
+            RunOnceResult::NoRunnableTask
+        }
+
+        DispatchResult::Failed => {
+            scheduler_log_line("  run_once result: failed");
+
+            RunOnceResult::Failed
+        }
+    }
 }
