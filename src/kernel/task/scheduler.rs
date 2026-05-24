@@ -406,29 +406,9 @@ pub fn handle_task_return(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResul
     print_task_return_snapshot(snapshot);
 
     match snapshot.last_return {
-        crate::kernel::task::table::TaskReturnKind::Yield => {
-            scheduler_log_line("  return action: yield -> scheduler::run");
-
-            match run() {
-                RunResult::NoRunnableTask => {
-                    scheduler_log_line("  scheduler run returned: no runnable task");
-                    TaskReturnHandleResult::NoRunnableTask
-                }
-                RunResult::Failed => {
-                    scheduler_log_line("  scheduler run returned: failed");
-                    TaskReturnHandleResult::Failed
-                }
-            }
-        }
-        crate::kernel::task::table::TaskReturnKind::Exit => {
-            scheduler_log_line("  return action: exit -> no resume for returned task");
-            scheduler_log_line("  result: no runnable task");
-            TaskReturnHandleResult::NoRunnableTask
-        }
-        crate::kernel::task::table::TaskReturnKind::None => {
-            scheduler_log_line("  return action: none -> failed");
-            TaskReturnHandleResult::Failed
-        }
+        crate::kernel::task::table::TaskReturnKind::Yield => handle_task_yield(snapshot),
+        crate::kernel::task::table::TaskReturnKind::Exit => handle_task_exit(snapshot),
+        crate::kernel::task::table::TaskReturnKind::None => handle_task_return_none(snapshot),
     }
 }
 
@@ -449,4 +429,44 @@ fn print_task_return_snapshot(snapshot: TaskReturnSnapshot) {
     scheduler_log_str("  return snapshot can_resume: ");
     crate::kernel::task::table::print_yes_no(snapshot.can_resume);
     scheduler_log_line("");
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+fn handle_task_yield(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
+    scheduler_log_line("  return action: yield -> scheduler::run");
+
+    if !snapshot.can_resume {
+        scheduler_log_line("  yield result: failed; returned task is not resumable");
+        return TaskReturnHandleResult::Failed;
+    }
+
+    match run() {
+        RunResult::NoRunnableTask => {
+            scheduler_log_line("  scheduler run returned: no runnable task");
+            TaskReturnHandleResult::NoRunnableTask
+        }
+        RunResult::Failed => {
+            scheduler_log_line("  scheduler run returned: failed");
+            TaskReturnHandleResult::Failed
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
+    scheduler_log_line("  return action: exit -> no resume for returned task");
+
+    if snapshot.can_resume {
+        scheduler_log_line("  exit result: failed; finished task is still resumable");
+        return TaskReturnHandleResult::Failed;
+    }
+
+    scheduler_log_line("  result: no runnable task");
+    TaskReturnHandleResult::NoRunnableTask
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+fn handle_task_return_none(_snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
+    scheduler_log_line("  return action: none -> failed");
+    TaskReturnHandleResult::Failed
 }
