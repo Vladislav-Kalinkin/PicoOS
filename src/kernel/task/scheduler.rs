@@ -224,32 +224,32 @@ pub fn dispatch_next() -> DispatchResult {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
-    crate::drivers::uart::write_line("  scheduler resume path: checked resume");
+    scheduler_log_line("  scheduler resume path: checked resume");
 
-    crate::drivers::uart::write_str("  resume task: ");
+    scheduler_log_str("  resume task: ");
     crate::kernel::task::table::print_task_name_by_id(task_id);
-    crate::drivers::uart::write_line("");
+    scheduler_log_line("");
 
     match crate::kernel::task::table::can_task_resume(task_id) {
         Some(true) => {}
         Some(false) => {
-            crate::drivers::uart::write_line("  resume blocked: task cannot resume");
+            scheduler_log_line("  resume blocked: task cannot resume");
             return DispatchResult::Failed;
         }
         None => {
-            crate::drivers::uart::write_line("  resume blocked: unknown task");
+            scheduler_log_line("  resume blocked: unknown task");
             return DispatchResult::Failed;
         }
     }
 
     let Some(frame) = validate_resume_frame(task_id) else {
-        crate::drivers::uart::write_line("  scheduler resume path result: FAILED");
+        scheduler_log_line("  scheduler resume path result: FAILED");
         return DispatchResult::Failed;
     };
 
-    crate::drivers::uart::write_line("  scheduler resume path result: OK");
+    scheduler_log_line("  scheduler resume path result: OK");
 
-    restore_selected_task_checked(task_id, frame);
+    restore_selected_task_checked(task_id, frame)
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
@@ -319,17 +319,24 @@ fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
     scheduler_log_line("");
 
     scheduler_log_line("  scheduler restore path result: OK");
-    scheduler_log_line("  calling arch restore from scheduler path...");
 
-    #[cfg(feature = "two_task_resume_handoff_test")]
+    #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
     {
-        if let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) {
-            if let Some(stack_top) = crate::kernel::task::table::get_task_stack_top(task_id) {
-                crate::kernel::task::debug::set_debug_current_task_id(task_id);
-                crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
-            }
-        }
+        let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) else {
+            scheduler_log_line("  restore result: failed; missing task stack start");
+            crate::arch::halt();
+        };
+
+        let Some(stack_top) = crate::kernel::task::table::get_task_stack_top(task_id) else {
+            scheduler_log_line("  restore result: failed; missing task stack top");
+            crate::arch::halt();
+        };
+
+        crate::kernel::task::debug::set_debug_current_task_id(task_id);
+        crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
     }
+
+    scheduler_log_line("  calling arch restore from scheduler path...");
 
     unsafe {
         crate::arch::restore_verified_resume_frame(frame);
@@ -474,6 +481,7 @@ pub fn handle_task_return(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResul
     match snapshot.last_return {
         crate::kernel::task::table::TaskReturnKind::Yield => handle_task_yield(snapshot),
         crate::kernel::task::table::TaskReturnKind::Exit => handle_task_exit(snapshot),
+        crate::kernel::task::table::TaskReturnKind::Fault => handle_task_fault(snapshot),
         crate::kernel::task::table::TaskReturnKind::None => handle_task_return_none(snapshot),
     }
 }
@@ -616,7 +624,7 @@ fn start_selected_task_checked(task_id: usize) -> ! {
 
     scheduler_log_line("  scheduler start path result: OK");
 
-    #[cfg(feature = "two_task_resume_handoff_test")]
+    #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
     {
         crate::kernel::task::debug::set_debug_current_task_id(task_id);
         crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
@@ -629,4 +637,48 @@ fn start_selected_task_checked(task_id: usize) -> ! {
 fn scheduler_start_failed() -> ! {
     scheduler_log_line("  scheduler start path result: FAILED");
     crate::arch::halt();
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+fn handle_task_fault(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
+    scheduler_log_line("  return action: fault -> no resume for faulted task");
+
+    if snapshot.can_resume {
+        scheduler_log_line("  fault result: failed; faulted task is still resumable");
+        return TaskReturnHandleResult::Failed;
+    }
+
+    set_current_task(snapshot.task_id);
+
+    scheduler_log_str("  round-robin cursor set to faulted task: ");
+    task::print_task_name_by_id(snapshot.task_id);
+    scheduler_log_line("");
+
+    scheduler_log_line("  fault action: try next dispatchable task");
+
+    match find_next_dispatchable_task_after(Some(snapshot.task_id)) {
+        Some(task_id) => {
+            scheduler_log_str("  next dispatchable task after fault: ");
+            crate::kernel::task::table::print_task_name_by_id(task_id);
+            scheduler_log_line("");
+
+            scheduler_log_line("  action: scheduler::run");
+
+            match run() {
+                RunResult::NoRunnableTask => {
+                    scheduler_log_line("  scheduler run returned: no runnable task");
+                    TaskReturnHandleResult::NoRunnableTask
+                }
+                RunResult::Failed => {
+                    scheduler_log_line("  scheduler run returned: failed");
+                    TaskReturnHandleResult::Failed
+                }
+            }
+        }
+        None => {
+            scheduler_log_line("  next dispatchable task after fault: none");
+            scheduler_log_line("  result: no runnable task");
+            TaskReturnHandleResult::NoRunnableTask
+        }
+    }
 }

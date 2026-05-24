@@ -28,10 +28,12 @@ pub fn set_debug_current_stack_bounds(start: u64, top: u64) {
     }
 }
 
+#[allow(dead_code)]
 pub fn debug_current_stack_start() -> u64 {
     unsafe { DEBUG_CURRENT_STACK_START }
 }
 
+#[allow(dead_code)]
 pub fn debug_current_stack_top() -> u64 {
     unsafe { DEBUG_CURRENT_STACK_TOP }
 }

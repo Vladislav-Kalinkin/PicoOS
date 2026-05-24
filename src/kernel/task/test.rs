@@ -30,7 +30,8 @@ pub fn test_tasks() {
 #[cfg(all(
     feature = "task_yield_test",
     not(feature = "two_yield_task_test"),
-    not(feature = "two_task_resume_handoff_test")
+    not(feature = "two_task_resume_handoff_test"),
+    not(feature = "task_fault_test")
 ))]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
@@ -42,10 +43,22 @@ pub fn test_tasks_with_yield_worker() {
     print_tasks();
 }
 
+#[cfg(all(feature = "task_yield_test", feature = "task_fault_test"))]
+pub fn test_tasks_with_yield_worker() {
+    crate::kernel::task::table::init();
+
+    let _ = create_task("idle", idle_task);
+    let _ = create_task("worker-a", fault_test_worker_a);
+    let _ = create_task("faulty-worker", faulty_worker);
+
+    print_tasks();
+}
+
 #[cfg(all(
     feature = "task_yield_test",
     feature = "two_yield_task_test",
-    not(feature = "two_task_resume_handoff_test")
+    not(feature = "two_task_resume_handoff_test"),
+    not(feature = "task_fault_test")
 ))]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
@@ -57,7 +70,11 @@ pub fn test_tasks_with_yield_worker() {
     print_tasks();
 }
 
-#[cfg(all(feature = "task_yield_test", feature = "two_task_resume_handoff_test"))]
+#[cfg(all(
+    feature = "task_yield_test",
+    feature = "two_task_resume_handoff_test",
+    not(feature = "task_fault_test")
+))]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
 
@@ -77,6 +94,7 @@ fn worker_a_task() {
     print_current_task_stack_check("worker_a_task");
 }
 
+#[allow(dead_code)]
 fn worker_b_task() {
     print_current_task_stack_check("worker_b_task");
 }
@@ -253,12 +271,20 @@ pub fn test_task_yield() {
 
     set_debug_task_run_stage(10);
 
-    #[cfg(feature = "two_task_resume_handoff_test")]
+    #[cfg(feature = "task_fault_test")]
+    {
+        test_task_fault_bootstrap();
+    }
+
+    #[cfg(all(
+        feature = "two_task_resume_handoff_test",
+        not(feature = "task_fault_test")
+    ))]
     {
         test_two_task_resume_handoff_bootstrap();
     }
 
-    #[cfg(not(feature = "two_task_resume_handoff_test"))]
+    #[cfg(not(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test")))]
     {
         uart::write_line("selected task: worker-a");
         run_task_on_own_stack(1);
@@ -353,6 +379,16 @@ pub fn handle_task_return_for_debug_test() {
 
             crate::kernel::task::scheduler::switch_to_idle();
         }
+        TaskReturnKind::Fault => {
+            crate::kernel::task::table::set_task_state(
+                task_id,
+                crate::kernel::task::table::TaskState::Faulted,
+            );
+
+            crate::kernel::task::table::set_task_can_resume(task_id, false);
+
+            crate::kernel::task::scheduler::switch_to_idle();
+        }
         TaskReturnKind::None => {}
     }
 
@@ -387,7 +423,7 @@ pub fn handle_task_return_for_debug_test() {
     print_resume_eligibility_check(task_id);
     print_cpu_context_consistency_check(task_id);
 
-    #[cfg(feature = "two_task_resume_handoff_test")]
+    #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
     {
         let _ = print_resume_pc_proximity_check(task_id);
     }
@@ -443,7 +479,7 @@ pub fn test_scheduler_skips_finished_tasks() {
 
 #[cfg(feature = "scheduler_driven_task_test")]
 fn next_runnable_worker_task() -> Option<usize> {
-    for _ in 0..crate::kernel::task::table::MAX_TASKS {
+    for _ in 0..crate::kernel::task::table::max_tasks() {
         let next = crate::kernel::task::scheduler::schedule_next()?;
 
         if next == 0 {
@@ -519,6 +555,9 @@ fn print_resume_eligibility_check(task_id: usize) {
         }
         (Some(crate::kernel::task::table::TaskState::Finished), Some(false)) => {
             uart::write_line("    task is finished; resume disabled");
+        }
+        (Some(crate::kernel::task::table::TaskState::Faulted), Some(false)) => {
+            uart::write_line("    task is faulted; resume disabled");
         }
         _ => {
             uart::write_line("    task resume state is inconsistent");
@@ -913,7 +952,7 @@ fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     crate::drivers::uart::write_hex_u64(context.resume_pc);
     crate::drivers::uart::write_line("");
 
-    #[cfg(feature = "two_task_resume_handoff_test")]
+    #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
     {
         let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(context.resume_pc);
 
@@ -933,7 +972,10 @@ fn print_resume_pc_proximity_check(task_id: usize) -> bool {
         return resume_pc_inside_text;
     }
 
-    #[cfg(not(feature = "two_task_resume_handoff_test"))]
+    #[cfg(not(any(
+        feature = "two_task_resume_handoff_test",
+        feature = "task_fault_test"
+    )))]
     {
         if context.resume_pc < entry_addr {
             crate::drivers::uart::write_line("    delta: below entry");
@@ -1317,7 +1359,18 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.27");
+    crate::drivers::uart::write_line("  current: 0.1.28");
+    #[cfg(feature = "task_fault_test")]
+    {
+        crate::drivers::uart::write_line("  task fault state: OK");
+        crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
+    }
+
+    #[cfg(not(feature = "task_fault_test"))]
+    {
+        crate::drivers::uart::write_line("  task fault state: compiled");
+        crate::drivers::uart::write_line("  scheduler fault handler: compiled");
+    }
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1330,6 +1383,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  scheduler first task dispatch: OK");
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "two_yield_task_test")]
 fn two_yielding_task() {
     crate::drivers::uart::write_line("two_yielding_task: step 1");
@@ -1389,7 +1443,10 @@ pub fn handle_scheduler_reentry_after_task_return() {
     crate::kernel::task::table::print_task_name_by_id(snapshot.task_id);
     crate::drivers::uart::write_line("");
 
-    #[cfg(feature = "two_task_resume_handoff_test")]
+    #[cfg(all(
+        feature = "two_task_resume_handoff_test",
+        not(feature = "task_fault_test")
+    ))]
     {
         let phase = get_two_task_handoff_phase();
 
@@ -1439,18 +1496,24 @@ pub fn handle_scheduler_reentry_after_task_return() {
                 feature = "real_resume_restore_jump"
             ))]
             {
-                if real_resume_jump_completion_check() {
-                    crate::drivers::uart::write_line("scheduler resume loop result: OK");
-                    crate::drivers::uart::write_line("scheduler resume loop test complete");
+                #[cfg(feature = "task_fault_test")]
+                {
+                    if task_fault_completion_check() {
+                        crate::drivers::uart::write_line("task fault scheduler result: OK");
+                        crate::drivers::uart::write_line("task fault test complete");
+                        print_riscv_cooperative_resume_milestone();
+                        crate::arch::halt();
+                    }
+                }
 
-                    #[cfg(all(
-                        target_arch = "riscv64",
-                        feature = "real_resume_restore_jump",
-                        feature = "scheduler_resume_loop_test"
-                    ))]
-                    print_riscv_cooperative_resume_milestone();
-
-                    crate::arch::halt();
+                #[cfg(not(feature = "task_fault_test"))]
+                {
+                    if real_resume_jump_completion_check() {
+                        crate::drivers::uart::write_line("scheduler resume loop result: OK");
+                        crate::drivers::uart::write_line("scheduler resume loop test complete");
+                        print_riscv_cooperative_resume_milestone();
+                        crate::arch::halt();
+                    }
                 }
             }
 
@@ -1503,6 +1566,7 @@ fn advance_two_task_handoff_phase() {
     }
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "two_task_resume_handoff_test")]
 fn prepare_worker_b_until_yield() {
     uart::write_line("");
@@ -1526,4 +1590,109 @@ fn prepare_debug_context_for_task(task_id: usize) {
 
     set_debug_current_task_id(task_id);
     set_debug_current_stack_bounds(stack_start, stack_top);
+}
+
+#[cfg(feature = "task_fault_test")]
+fn faulty_worker() {
+    crate::drivers::uart::write_line("faulty_worker: step 1");
+    crate::drivers::uart::write_line("faulty_worker: intentional fault");
+    crate::kernel::task::task_fault();
+}
+
+#[cfg(feature = "task_fault_test")]
+fn test_task_fault_bootstrap() {
+    uart::write_line("task fault bootstrap:");
+    uart::write_line("bootstrap action: scheduler starts first fresh task");
+
+    crate::kernel::task::scheduler::set_current_task(0);
+
+    match crate::kernel::task::scheduler::run() {
+        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
+            uart::write_line("task fault bootstrap result: no runnable task");
+            crate::arch::halt();
+        }
+        crate::kernel::task::scheduler::RunResult::Failed => {
+            uart::write_line("task fault bootstrap result: FAILED");
+            crate::arch::halt();
+        }
+    }
+}
+
+#[cfg(feature = "task_fault_test")]
+fn fault_test_worker_a() {
+    crate::drivers::uart::write_line("fault_test_worker_a: step 1");
+    crate::kernel::task::yield_now();
+
+    crate::drivers::uart::write_line("fault_test_worker_a: resumed after yield");
+    crate::drivers::uart::write_line("fault_test_worker_a: step 2");
+    crate::kernel::task::task_exit();
+}
+
+#[cfg(feature = "task_fault_test")]
+fn task_fault_completion_check() -> bool {
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("task fault completion check:");
+
+    let worker_ok = matches!(
+        crate::kernel::task::table::get_task_state(1),
+        Some(crate::kernel::task::table::TaskState::Finished)
+    ) && matches!(
+        crate::kernel::task::table::get_task_return_kind(1),
+        Some(crate::kernel::task::table::TaskReturnKind::Exit)
+    ) && matches!(crate::kernel::task::table::can_task_resume(1), Some(false));
+
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  task: worker-a");
+    crate::drivers::uart::write_str("  state Finished: ");
+    crate::kernel::task::table::print_yes_no(matches!(
+        crate::kernel::task::table::get_task_state(1),
+        Some(crate::kernel::task::table::TaskState::Finished)
+    ));
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_str("  last return Exit: ");
+    crate::kernel::task::table::print_yes_no(matches!(
+        crate::kernel::task::table::get_task_return_kind(1),
+        Some(crate::kernel::task::table::TaskReturnKind::Exit)
+    ));
+    crate::drivers::uart::write_line("");
+
+    let fault_ok = matches!(
+        crate::kernel::task::table::get_task_state(2),
+        Some(crate::kernel::task::table::TaskState::Faulted)
+    ) && matches!(
+        crate::kernel::task::table::get_task_return_kind(2),
+        Some(crate::kernel::task::table::TaskReturnKind::Fault)
+    ) && matches!(crate::kernel::task::table::can_task_resume(2), Some(false));
+
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  task: faulty-worker");
+    crate::drivers::uart::write_str("  state Faulted: ");
+    crate::kernel::task::table::print_yes_no(matches!(
+        crate::kernel::task::table::get_task_state(2),
+        Some(crate::kernel::task::table::TaskState::Faulted)
+    ));
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_str("  last return Fault: ");
+    crate::kernel::task::table::print_yes_no(matches!(
+        crate::kernel::task::table::get_task_return_kind(2),
+        Some(crate::kernel::task::table::TaskReturnKind::Fault)
+    ));
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_str("  resume disabled: ");
+    crate::kernel::task::table::print_yes_no(matches!(
+        crate::kernel::task::table::can_task_resume(2),
+        Some(false)
+    ));
+    crate::drivers::uart::write_line("");
+
+    let ok = worker_ok && fault_ok;
+
+    crate::drivers::uart::write_str("  task fault result: ");
+    if ok {
+        crate::drivers::uart::write_line("OK");
+    } else {
+        crate::drivers::uart::write_line("FAILED");
+    }
+
+    ok
 }

@@ -48,6 +48,37 @@ pub fn task_exit() -> ! {
     }
 }
 
+#[allow(dead_code)]
+pub fn task_fault() -> ! {
+    uart::write_line("task fault requested");
+
+    let current_sp = crate::arch::stack_pointer();
+    let kernel_sp = debug_kernel_sp_before_task();
+    let return_pc = debug_kernel_return_pc();
+
+    set_debug_last_task_sp(current_sp);
+
+    uart::write_str("task_fault current SP: ");
+    uart::write_hex_u64(current_sp);
+    uart::write_line("");
+
+    uart::write_str("task_fault saved kernel SP: ");
+    uart::write_hex_u64(kernel_sp);
+    uart::write_line("");
+
+    uart::write_str("task_fault return PC: ");
+    uart::write_hex_u64(return_pc);
+    uart::write_line("");
+
+    uart::write_line("returning to kernel stack after task fault...");
+
+    set_debug_task_return_kind(TaskReturnKind::Fault);
+
+    unsafe {
+        crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
     let entry: TaskEntry = unsafe { core::mem::transmute(entry_addr) };
@@ -129,3 +160,4 @@ fn print_returning_yield_task_layer_precheck(
 
     ok
 }
+

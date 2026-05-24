@@ -3,33 +3,36 @@ use crate::kernel::memory;
 use crate::kernel::task::context;
 use crate::kernel::task::cpu_context::{self, TaskCpuContext};
 
-const MAX_TASKS: usize = 4;
+pub const MAX_TASKS: usize = 4;
 
 #[allow(dead_code)]
 pub fn max_tasks() -> usize {
     MAX_TASKS
 }
+
 pub const TASK_NAME_LEN: usize = 16;
 static mut LAST_RETURNED_TASK_ID: Option<usize> = None;
 
 pub type TaskEntry = fn();
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum TaskState {
     Empty,
     Ready,
     Running,
     Blocked,
     Finished,
+    Faulted,
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum TaskReturnKind {
     None,
-    Yield,
     Exit,
+    Yield,
+    Fault,
 }
 
 #[allow(dead_code)]
@@ -557,6 +560,7 @@ fn find_slot_by_id(id: usize) -> Option<usize> {
 }
 
 // Keep this manual copy for early bare-metal safety.
+// Slice copy/fill caused an early ARM64 exception during task creation.
 #[allow(clippy::manual_memcpy)]
 fn copy_name(dst: &mut [u8; TASK_NAME_LEN], name: &str) {
     let mut i = 0;
@@ -602,6 +606,7 @@ fn print_state(state: TaskState) {
         TaskState::Running => uart::write_str("Running"),
         TaskState::Blocked => uart::write_str("Blocked"),
         TaskState::Finished => uart::write_str("Finished"),
+        TaskState::Faulted => uart::write_str("Faulted"),
     }
 }
 
@@ -672,6 +677,7 @@ pub fn print_task_return_kind(kind: TaskReturnKind) {
         TaskReturnKind::None => uart::write_str("None"),
         TaskReturnKind::Exit => uart::write_str("Exit"),
         TaskReturnKind::Yield => uart::write_str("Yield"),
+        TaskReturnKind::Fault => uart::write_str("Fault"),
     }
 }
 
@@ -870,6 +876,18 @@ pub fn print_task_resume_frame_by_id(id: usize) {
     }
 }
 
+#[allow(dead_code)]
+pub fn set_last_returned_task_id(id: usize) {
+    unsafe {
+        LAST_RETURNED_TASK_ID = Some(id);
+    }
+}
+
+#[allow(dead_code)]
+pub fn get_last_returned_task_id() -> Option<usize> {
+    unsafe { LAST_RETURNED_TASK_ID }
+}
+
 #[cfg(feature = "scheduler_reentry_test")]
 pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     let state = get_task_state(id)?;
@@ -884,21 +902,18 @@ pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     })
 }
 
-pub fn set_last_returned_task_id(id: usize) {
-    unsafe {
-        LAST_RETURNED_TASK_ID = Some(id);
-    }
+#[cfg(feature = "scheduler_reentry_test")]
+pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
+    let id = get_last_returned_task_id()?;
+    get_task_return_snapshot(id)
 }
 
 #[allow(dead_code)]
-pub fn get_last_returned_task_id() -> Option<usize> {
-    unsafe { LAST_RETURNED_TASK_ID }
-}
-
-#[cfg(feature = "scheduler_reentry_test")]
-pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
-    let task_id = get_last_returned_task_id()?;
-    get_task_return_snapshot(task_id)
+pub fn is_resumable_task(id: usize) -> bool {
+    matches!(get_task_state(id), Some(TaskState::Ready))
+        && matches!(can_task_resume(id), Some(true))
+        && matches!(get_task_return_kind(id), Some(TaskReturnKind::Yield))
+        && get_task_resume_frame(id).map(|frame| frame.is_valid()).unwrap_or(false)
 }
 
 #[allow(dead_code)]
@@ -906,28 +921,6 @@ pub fn is_fresh_ready_task(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Ready))
         && !has_started(id)
         && matches!(can_task_resume(id), Some(false))
-}
-
-#[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
-pub fn is_resumable_task(id: usize) -> bool {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            let task = TASKS[slot];
-
-            if matches!(task.state, TaskState::Empty) || task.id != id {
-                continue;
-            }
-
-            return matches!(task.state, TaskState::Ready)
-                && task.can_resume
-                && matches!(task.last_return_kind, TaskReturnKind::Yield)
-                && task.last_task_sp >= task.stack_start
-                && task.last_task_sp < task.stack_top;
-        }
-    }
-
-    false
 }
 
 #[allow(dead_code)]

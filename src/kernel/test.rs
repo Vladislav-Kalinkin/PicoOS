@@ -24,7 +24,12 @@ pub fn run_selftests() -> ! {
     uart::write_line("");
     uart::write_line("");
     uart::write_line("[selftest] task table");
+    #[cfg(feature = "task_yield_test")]
+    crate::kernel::task::test_tasks_with_yield_worker();
+
+    #[cfg(not(feature = "task_yield_test"))]
     crate::kernel::task::test_tasks();
+
     crate::kernel::task::scheduler::init();
 
     uart::write_line("");
