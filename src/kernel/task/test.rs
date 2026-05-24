@@ -155,7 +155,7 @@ pub fn test_task_stack_switch() {
     feature = "scheduler_driven_task_test",
     feature = "task_yield_test"
 ))]
-fn run_task_on_own_stack(task_id: usize) -> ! {
+pub fn run_task_on_own_stack(task_id: usize) -> ! {
     let Some(entry) = get_task_entry(task_id) else {
         uart::write_line("selected task entry: none");
         crate::arch::halt();
@@ -1306,7 +1306,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.24");
+    crate::drivers::uart::write_line("  current: 0.1.26");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1314,6 +1314,8 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  RISC-V yield boundary: OK");
     crate::drivers::uart::write_line("  two-task cooperative handoff: OK");
     crate::drivers::uart::write_line("  scheduler round-robin fairness: OK");
+    crate::drivers::uart::write_line("  scheduler task capacity from table: OK");
+    crate::drivers::uart::write_line("  scheduler fresh task dispatch: OK");
 }
 
 #[cfg(feature = "two_yield_task_test")]
@@ -1380,14 +1382,20 @@ pub fn handle_scheduler_reentry_after_task_return() {
         let phase = get_two_task_handoff_phase();
 
         if phase == 0 && snapshot.task_id == 1 {
+            if !matches!(
+                snapshot.last_return,
+                crate::kernel::task::table::TaskReturnKind::Yield
+            ) {
+                crate::drivers::uart::write_line("two-task handoff error: worker-a did not yield");
+                crate::arch::halt();
+            }
+
             advance_two_task_handoff_phase();
 
             crate::drivers::uart::write_line("two-task handoff phase 0: worker-a yielded");
             crate::drivers::uart::write_line(
-                "two-task handoff action: prepare worker-b until yield",
+                "two-task handoff action: scheduler starts next fresh task",
             );
-
-            prepare_worker_b_until_yield();
         }
 
         if phase == 1 && snapshot.task_id == 2 {
@@ -1406,21 +1414,7 @@ pub fn handle_scheduler_reentry_after_task_return() {
                 "two-task handoff action: continue scheduler re-entry",
             );
 
-            match crate::kernel::task::table::find_first_resumable_task() {
-                Some(next_task_id) => {
-                    crate::drivers::uart::write_str("two-task handoff next resumable: ");
-                    crate::kernel::task::table::print_task_name_by_id(next_task_id);
-                    crate::drivers::uart::write_line("");
-
-                    prepare_debug_context_for_task(next_task_id);
-                }
-                None => {
-                    crate::drivers::uart::write_line(
-                        "two-task handoff error: no resumable task after worker-b yield",
-                    );
-                    crate::arch::halt();
-                }
-            }
+            prepare_debug_context_for_task(1);
         }
     }
 

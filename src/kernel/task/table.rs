@@ -3,7 +3,12 @@ use crate::kernel::memory;
 use crate::kernel::task::context;
 use crate::kernel::task::cpu_context::{self, TaskCpuContext};
 
-pub const MAX_TASKS: usize = 4;
+const MAX_TASKS: usize = 4;
+
+#[allow(dead_code)]
+pub fn max_tasks() -> usize {
+    MAX_TASKS
+}
 pub const TASK_NAME_LEN: usize = 16;
 static mut LAST_RETURNED_TASK_ID: Option<usize> = None;
 
@@ -894,4 +899,38 @@ pub fn get_last_returned_task_id() -> Option<usize> {
 pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
     let task_id = get_last_returned_task_id()?;
     get_task_return_snapshot(task_id)
+}
+
+#[allow(dead_code)]
+pub fn is_fresh_ready_task(id: usize) -> bool {
+    matches!(get_task_state(id), Some(TaskState::Ready))
+        && !has_started(id)
+        && matches!(can_task_resume(id), Some(false))
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn is_resumable_task(id: usize) -> bool {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            let task = TASKS[slot];
+
+            if matches!(task.state, TaskState::Empty) || task.id != id {
+                continue;
+            }
+
+            return matches!(task.state, TaskState::Ready)
+                && task.can_resume
+                && matches!(task.last_return_kind, TaskReturnKind::Yield)
+                && task.last_task_sp >= task.stack_start
+                && task.last_task_sp < task.stack_top;
+        }
+    }
+
+    false
+}
+
+#[allow(dead_code)]
+pub fn is_dispatchable_task(id: usize) -> bool {
+    is_resumable_task(id) || is_fresh_ready_task(id)
 }

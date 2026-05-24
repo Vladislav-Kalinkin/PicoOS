@@ -49,24 +49,28 @@ pub fn current_task_id() -> Option<usize> {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
-fn find_next_resumable_task_after(task_id: Option<usize>) -> Option<usize> {
-    const MAX_TASKS: usize = 4;
+fn find_next_dispatchable_task_after(task_id: Option<usize>) -> Option<usize> {
+    let max_tasks = task::max_tasks();
+
+    if max_tasks == 0 {
+        return None;
+    }
 
     let start = match task_id {
-        Some(id) => (id + 1) % MAX_TASKS,
+        Some(id) => (id + 1) % max_tasks,
         None => 0,
     };
 
     let mut offset = 0;
 
-    while offset < MAX_TASKS {
-        let candidate = (start + offset) % MAX_TASKS;
+    while offset < max_tasks {
+        let candidate = (start + offset) % max_tasks;
 
         /*
          * For scheduler resume tests we do not want idle to steal control
-         * while worker tasks are still resumable.
+         * while worker tasks are dispatchable.
          */
-        if candidate != 0 && matches!(task::can_task_resume(candidate), Some(true)) {
+        if candidate != 0 && task::is_dispatchable_task(candidate) {
             return Some(candidate);
         }
 
@@ -191,18 +195,31 @@ pub fn dispatch_next() -> DispatchResult {
     }
     scheduler_log_line("");
 
-    let Some(task_id) = find_next_resumable_task_after(current) else {
+    scheduler_log_str("  task table capacity: ");
+    crate::drivers::uart::write_dec_u64(task::max_tasks() as u64);
+    scheduler_log_line("");
+
+    let Some(task_id) = find_next_dispatchable_task_after(current) else {
         scheduler_log_line("  selected task: none");
         return DispatchResult::NoRunnableTask;
     };
 
     print_dispatch_task_summary(task_id);
 
-    scheduler_log_line("  dispatch action: resume task");
+    if task::is_resumable_task(task_id) {
+        scheduler_log_line("  dispatch action: resume task");
 
-    force_current_task(task_id);
+        force_current_task(task_id);
 
-    resume_selected_task_checked(task_id)
+        resume_selected_task_checked(task_id)
+    } else if task::is_fresh_ready_task(task_id) {
+        scheduler_log_line("  dispatch action: start fresh task");
+
+        start_selected_task_checked(task_id)
+    } else {
+        scheduler_log_line("  dispatch action: failed; task is not dispatchable");
+        DispatchResult::Failed
+    }
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
@@ -522,11 +539,11 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     task::print_task_name_by_id(snapshot.task_id);
     scheduler_log_line("");
 
-    scheduler_log_line("  exit action: try next resumable task");
+    scheduler_log_line("  exit action: try next dispatchable task");
 
-    match find_next_resumable_task_after(Some(snapshot.task_id)) {
+    match find_next_dispatchable_task_after(Some(snapshot.task_id)) {
         Some(task_id) => {
-            scheduler_log_str("  next resumable task after exit: ");
+            scheduler_log_str("  next dispatchable task after exit: ");
             crate::kernel::task::table::print_task_name_by_id(task_id);
             scheduler_log_line("");
 
@@ -544,7 +561,7 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
             }
         }
         None => {
-            scheduler_log_line("  next resumable task after exit: none");
+            scheduler_log_line("  next dispatchable task after exit: none");
             scheduler_log_line("  result: no runnable task");
             TaskReturnHandleResult::NoRunnableTask
         }
@@ -555,4 +572,61 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
 fn handle_task_return_none(_snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("  return action: none -> failed");
     TaskReturnHandleResult::Failed
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn start_selected_task_checked(task_id: usize) -> ! {
+    scheduler_log_line("  scheduler start path: checked start");
+
+    scheduler_log_str("  start task: ");
+    task::print_task_name_by_id(task_id);
+    scheduler_log_line("");
+
+    if !task::is_fresh_ready_task(task_id) {
+        scheduler_log_line("  start blocked: task is not fresh Ready");
+        scheduler_start_failed();
+    }
+
+    let Some(stack_start) = task::get_task_stack_start(task_id) else {
+        scheduler_log_line("  start blocked: missing stack start");
+        scheduler_start_failed();
+    };
+
+    let Some(stack_top) = task::get_task_stack_top(task_id) else {
+        scheduler_log_line("  start blocked: missing stack top");
+        scheduler_start_failed();
+    };
+
+    let Some(entry) = task::get_task_entry(task_id) else {
+        scheduler_log_line("  start blocked: missing entry");
+        scheduler_start_failed();
+    };
+
+    scheduler_log_str("  start entry: ");
+    crate::drivers::uart::write_hex_u64(entry as *const () as usize as u64);
+    scheduler_log_line("");
+
+    scheduler_log_str("  start stack_start: ");
+    scheduler_log_hex(stack_start);
+    scheduler_log_line("");
+
+    scheduler_log_str("  start stack_top: ");
+    scheduler_log_hex(stack_top);
+    scheduler_log_line("");
+
+    scheduler_log_line("  scheduler start path result: OK");
+
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        crate::kernel::task::debug::set_debug_current_task_id(task_id);
+        crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
+    }
+
+    crate::kernel::task::run_task_on_own_stack(task_id);
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn scheduler_start_failed() -> ! {
+    scheduler_log_line("  scheduler start path result: FAILED");
+    crate::arch::halt();
 }
