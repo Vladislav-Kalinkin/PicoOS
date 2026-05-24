@@ -461,8 +461,33 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
         return TaskReturnHandleResult::Failed;
     }
 
-    scheduler_log_line("  result: no runnable task");
-    TaskReturnHandleResult::NoRunnableTask
+    scheduler_log_line("  exit action: try next resumable task");
+
+    match crate::kernel::task::table::find_first_resumable_task() {
+        Some(task_id) => {
+            scheduler_log_str("  next resumable task after exit: ");
+            crate::kernel::task::table::print_task_name_by_id(task_id);
+            scheduler_log_line("");
+
+            scheduler_log_line("  action: scheduler::run");
+
+            match run() {
+                RunResult::NoRunnableTask => {
+                    scheduler_log_line("  scheduler run returned: no runnable task");
+                    TaskReturnHandleResult::NoRunnableTask
+                }
+                RunResult::Failed => {
+                    scheduler_log_line("  scheduler run returned: failed");
+                    TaskReturnHandleResult::Failed
+                }
+            }
+        }
+        None => {
+            scheduler_log_line("  next resumable task after exit: none");
+            scheduler_log_line("  result: no runnable task");
+            TaskReturnHandleResult::NoRunnableTask
+        }
+    }
 }
 
 #[cfg(feature = "scheduler_reentry_test")]
