@@ -689,10 +689,21 @@ unsafe fn restore_resume_frame_real_jump(
     crate::drivers::uart::write_hex_u64(frame.resume_pc);
     crate::drivers::uart::write_line("");
 
-    crate::drivers::uart::write_line(" jumping now; expected next lines:");
-    crate::drivers::uart::write_line(" yield_now: resumed after arch yield");
-    crate::drivers::uart::write_line(" yielding_task: step 2");
-    crate::drivers::uart::write_line(" task exit requested");
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        crate::drivers::uart::write_line(" jumping now; expected next lines:");
+        crate::drivers::uart::write_line(" yield_now: resumed after RISC-V boundary");
+        crate::drivers::uart::write_line(" handoff worker resumes after yield");
+        crate::drivers::uart::write_line(" worker either yields again or exits");
+    }
+
+    #[cfg(not(feature = "two_task_resume_handoff_test"))]
+    {
+        crate::drivers::uart::write_line(" jumping now; expected next lines:");
+        crate::drivers::uart::write_line(" yield_now: resumed after arch yield");
+        crate::drivers::uart::write_line(" yielding_task: step 2");
+        crate::drivers::uart::write_line(" task exit requested");
+    }
 
     core::arch::asm!(
         "mv sp, {new_sp}",

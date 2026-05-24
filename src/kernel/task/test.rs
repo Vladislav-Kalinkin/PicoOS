@@ -1306,11 +1306,14 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.23");
+    crate::drivers::uart::write_line("  current: 0.1.24");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
     crate::drivers::uart::write_line("  scheduler-oriented resume loop: OK");
+    crate::drivers::uart::write_line("  RISC-V yield boundary: OK");
+    crate::drivers::uart::write_line("  two-task cooperative handoff: OK");
+    crate::drivers::uart::write_line("  scheduler round-robin fairness: OK");
 }
 
 #[cfg(feature = "two_yield_task_test")]

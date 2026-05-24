@@ -48,6 +48,34 @@ pub fn current_task_id() -> Option<usize> {
     unsafe { CURRENT_TASK_ID }
 }
 
+#[cfg(feature = "scheduler_dispatch_test")]
+fn find_next_resumable_task_after(task_id: Option<usize>) -> Option<usize> {
+    const MAX_TASKS: usize = 4;
+
+    let start = match task_id {
+        Some(id) => (id + 1) % MAX_TASKS,
+        None => 0,
+    };
+
+    let mut offset = 0;
+
+    while offset < MAX_TASKS {
+        let candidate = (start + offset) % MAX_TASKS;
+
+        /*
+         * For scheduler resume tests we do not want idle to steal control
+         * while worker tasks are still resumable.
+         */
+        if candidate != 0 && matches!(task::can_task_resume(candidate), Some(true)) {
+            return Some(candidate);
+        }
+
+        offset += 1;
+    }
+
+    None
+}
+
 pub fn print_current_task_name() {
     match current_task_id() {
         Some(id) => task::print_task_name_by_id(id),
@@ -154,7 +182,16 @@ pub fn dispatch_next() -> DispatchResult {
     scheduler_log_line("");
     scheduler_log_line("scheduler dispatch_next:");
 
-    let Some(task_id) = crate::kernel::task::table::find_first_resumable_task() else {
+    let current = current_task_id();
+
+    scheduler_log_str("  round-robin after: ");
+    match current {
+        Some(id) => task::print_task_name_by_id(id),
+        None => scheduler_log_str("none"),
+    }
+    scheduler_log_line("");
+
+    let Some(task_id) = find_next_resumable_task_after(current) else {
         scheduler_log_line("  selected task: none");
         return DispatchResult::NoRunnableTask;
     };
@@ -162,6 +199,8 @@ pub fn dispatch_next() -> DispatchResult {
     print_dispatch_task_summary(task_id);
 
     scheduler_log_line("  dispatch action: resume task");
+
+    force_current_task(task_id);
 
     resume_selected_task_checked(task_id)
 }
@@ -450,6 +489,12 @@ fn handle_task_yield(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
         return TaskReturnHandleResult::Failed;
     }
 
+    set_current_task(snapshot.task_id);
+
+    scheduler_log_str("  round-robin cursor set to yielded task: ");
+    task::print_task_name_by_id(snapshot.task_id);
+    scheduler_log_line("");
+
     match run() {
         RunResult::NoRunnableTask => {
             scheduler_log_line("  scheduler run returned: no runnable task");
@@ -471,9 +516,15 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
         return TaskReturnHandleResult::Failed;
     }
 
+    set_current_task(snapshot.task_id);
+
+    scheduler_log_str("  round-robin cursor set to exited task: ");
+    task::print_task_name_by_id(snapshot.task_id);
+    scheduler_log_line("");
+
     scheduler_log_line("  exit action: try next resumable task");
 
-    match crate::kernel::task::table::find_first_resumable_task() {
+    match find_next_resumable_task_after(Some(snapshot.task_id)) {
         Some(task_id) => {
             scheduler_log_str("  next resumable task after exit: ");
             crate::kernel::task::table::print_task_name_by_id(task_id);
