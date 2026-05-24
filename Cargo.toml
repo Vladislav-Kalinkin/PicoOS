@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.28"
+version = "0.1.30"
 edition = "2021"
 
 [[bin]]
@@ -38,6 +38,7 @@ scheduler_reentry_test = []
 two_task_resume_handoff_test = []
 task_fault_test = []
 trap_to_task_fault_test = []
+real_trap_classification_test = []
 
 two_task_resume_handoff_selftest = [
   "scheduler_reentry_selftest",

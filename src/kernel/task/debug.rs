@@ -60,6 +60,33 @@ pub fn debug_kernel_return_pc() -> u64 {
     unsafe { DEBUG_KERNEL_RETURN_PC }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TrapExecutionContext {
+    Kernel,
+    Task,
+}
+
+pub fn current_trap_execution_context() -> TrapExecutionContext {
+    let task_id = debug_current_task_id();
+
+    if task_id != 0 {
+        TrapExecutionContext::Task
+    } else {
+        TrapExecutionContext::Kernel
+    }
+}
+
+pub fn print_trap_execution_context() {
+    match current_trap_execution_context() {
+        TrapExecutionContext::Kernel => {
+            crate::drivers::uart::write_line("trap execution context: kernel");
+        }
+        TrapExecutionContext::Task => {
+            crate::drivers::uart::write_line("trap execution context: task");
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn task_return_point() -> ! {
     uart::write_line("");

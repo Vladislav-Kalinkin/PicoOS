@@ -194,3 +194,52 @@ fn print_returning_yield_task_layer_precheck(
 
     ok
 }
+
+#[allow(dead_code)]
+
+pub fn simulated_real_trap_fault() -> ! {
+    uart::write_line("simulated real trap fault requested");
+
+    crate::kernel::task::debug::print_trap_execution_context();
+
+    crate::kernel::task::fault::print_current_trap_fault_classification();
+
+    match crate::kernel::task::fault::classify_current_trap_fault() {
+        crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
+            uart::write_line("simulated real trap result: kernel fault");
+
+            uart::write_line("kernel fault action: halt");
+
+            crate::arch::halt();
+        }
+
+        crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
+            uart::write_line("simulated real trap result: task fault");
+
+            let current_sp = crate::arch::stack_pointer();
+            let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
+            let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+            crate::kernel::task::debug::set_debug_last_task_sp(current_sp);
+
+            uart::write_str("simulated real trap current SP: ");
+            uart::write_hex_u64(current_sp);
+            uart::write_line("");
+            uart::write_str("simulated real trap saved kernel SP: ");
+            uart::write_hex_u64(kernel_sp);
+            uart::write_line("");
+            uart::write_str("simulated real trap return PC: ");
+            uart::write_hex_u64(return_pc);
+            uart::write_line("");
+            uart::write_line("simulated real trap classified as task fault");
+            uart::write_line("returning to kernel stack after simulated real trap...");
+
+            crate::kernel::task::debug::set_debug_task_return_kind(
+                crate::kernel::task::table::TaskReturnKind::Fault,
+            );
+
+            unsafe {
+                crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
+            }
+        }
+    }
+}
