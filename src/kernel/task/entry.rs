@@ -57,33 +57,24 @@ pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
 
 #[allow(dead_code)]
 pub fn yield_now() {
-    let (task_sp, resume_pc) = crate::arch::capture_yield_context();
-
-    uart::write_line("task yield requested");
+    crate::drivers::uart::write_line("task yield requested");
 
     let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
     let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
 
-    uart::write_str("yield saved kernel SP: ");
-    uart::write_hex_u64(kernel_sp);
-    uart::write_line("");
+    crate::drivers::uart::write_str("yield saved kernel SP: ");
+    crate::drivers::uart::write_hex_u64(kernel_sp);
+    crate::drivers::uart::write_line("");
 
-    uart::write_str("yield return PC: ");
-    uart::write_hex_u64(return_pc);
-    uart::write_line("");
+    crate::drivers::uart::write_str("yield return PC: ");
+    crate::drivers::uart::write_hex_u64(return_pc);
+    crate::drivers::uart::write_line("");
 
-    crate::drivers::uart::write_line("yielding to kernel via arch stub...");
-
-    if !print_returning_yield_task_layer_precheck(task_sp, resume_pc, kernel_sp, return_pc) {
-        crate::drivers::uart::write_line("returning yield task-layer precheck failed");
-        crate::arch::halt();
-    }
+    crate::drivers::uart::write_line("yielding to kernel via RISC-V boundary...");
 
     unsafe {
-        crate::arch::yield_to_kernel_and_return(task_sp, resume_pc, kernel_sp, return_pc);
+        crate::arch::task_yield_boundary(kernel_sp, return_pc);
     }
-
-    crate::drivers::uart::write_line("yield_now: resumed after arch yield");
 }
 
 #[allow(dead_code)]

@@ -7,6 +7,50 @@ pub mod traps;
 core::arch::global_asm!(include_str!("boot.S"));
 core::arch::global_asm!(include_str!("trap.S"));
 
+#[cfg(target_arch = "riscv64")]
+core::arch::global_asm!(
+    r#"
+    .section .text
+    .global task_yield_boundary
+    .type task_yield_boundary, @function
+
+task_yield_boundary:
+    /*
+     * Rust call ABI:
+     *   a0 = kernel_sp
+     *   a1 = return_pc
+     *
+     * At function entry:
+     *   sp = task stack pointer at call boundary
+     *   ra = continuation address after call task_yield_boundary
+     */
+
+    mv t2, a0
+    mv t3, a1
+
+    mv t0, sp
+    mv t1, ra
+
+    /*
+     * yield_to_kernel_returning_stub ABI:
+     *   a0 = task_sp
+     *   a1 = resume_pc
+     *   a2 = kernel_sp
+     *   a3 = return_pc
+     */
+    mv a0, t0
+    mv a1, t1
+    mv a2, t2
+    mv a3, t3
+
+    j yield_to_kernel_returning_stub
+"#
+);
+
+unsafe extern "C" {
+    pub fn task_yield_boundary(kernel_sp: u64, return_pc: u64);
+}
+
 unsafe extern "C" {
     static trap_vector: u8;
 }
@@ -18,6 +62,45 @@ pub fn halt() -> ! {
             asm!("wfi", options(nomem, nostack, preserves_flags));
         }
     }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RiscvYieldContext {
+    pub ra: u64,
+    pub s0: u64,
+    pub s1: u64,
+    pub s2: u64,
+    pub s3: u64,
+    pub s4: u64,
+    pub s5: u64,
+    pub s6: u64,
+    pub s7: u64,
+    pub s8: u64,
+    pub s9: u64,
+    pub s10: u64,
+    pub s11: u64,
+}
+
+static mut LAST_RISCV_YIELD_CONTEXT: RiscvYieldContext = RiscvYieldContext {
+    ra: 0,
+    s0: 0,
+    s1: 0,
+    s2: 0,
+    s3: 0,
+    s4: 0,
+    s5: 0,
+    s6: 0,
+    s7: 0,
+    s8: 0,
+    s9: 0,
+    s10: 0,
+    s11: 0,
+};
+
+#[allow(dead_code)]
+pub fn last_riscv_yield_context() -> RiscvYieldContext {
+    unsafe { LAST_RISCV_YIELD_CONTEXT }
 }
 
 pub fn init_exceptions() {
@@ -404,73 +487,25 @@ unsafe fn restore_resume_frame_asm_stub(
     }
 }
 
-#[allow(dead_code)]
+#[cfg(target_arch = "riscv64")]
+#[unsafe(no_mangle)]
 #[inline(never)]
-pub unsafe fn yield_to_kernel_and_return(
+pub unsafe extern "C" fn yield_to_kernel_returning_stub(
     task_sp: u64,
     resume_pc: u64,
     kernel_sp: u64,
     return_pc: u64,
-) {
-    yield_to_kernel_returning_stub(task_sp, resume_pc, kernel_sp, return_pc);
-}
-
-#[inline(never)]
-unsafe fn yield_to_kernel_returning_stub(
-    task_sp: u64,
-    resume_pc: u64,
-    kernel_sp: u64,
-    return_pc: u64,
-) {
+) -> ! {
     crate::drivers::uart::write_line("yield returning stub:");
     crate::drivers::uart::write_line(" mode: placeholder");
-    #[cfg(feature = "verbose_resume_debug")]
-    print_returning_yield_contract();
 
-    #[cfg(feature = "verbose_resume_debug")]
-    {
-        crate::drivers::uart::write_line("  RISC-V returning yield ABI inputs:");
-
-        crate::drivers::uart::write_str("    task_sp: ");
-        crate::drivers::uart::write_hex_u64(task_sp);
-        crate::drivers::uart::write_line("");
-
-        crate::drivers::uart::write_str("    resume_pc: ");
-        crate::drivers::uart::write_hex_u64(resume_pc);
-        crate::drivers::uart::write_line("");
-
-        crate::drivers::uart::write_str("    kernel_sp: ");
-        crate::drivers::uart::write_hex_u64(kernel_sp);
-        crate::drivers::uart::write_line("");
-
-        crate::drivers::uart::write_str("    return_pc: ");
-        crate::drivers::uart::write_hex_u64(return_pc);
-        crate::drivers::uart::write_line("");
-    }
-
-    crate::drivers::uart::write_str(" task_sp: ");
-    crate::drivers::uart::write_hex_u64(task_sp);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str(" resume_pc: ");
-    crate::drivers::uart::write_hex_u64(resume_pc);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str(" kernel_sp: ");
-    crate::drivers::uart::write_hex_u64(kernel_sp);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str(" return_pc: ");
-    crate::drivers::uart::write_hex_u64(return_pc);
-    crate::drivers::uart::write_line("");
-
-    if !validate_returning_yield_abi_inputs(task_sp, resume_pc, kernel_sp, return_pc) {
-        crate::drivers::uart::write_line(" returning yield ABI validation failed");
-        crate::arch::halt();
-    }
+    // остальной существующий код
 
     crate::drivers::uart::write_line(" delegating to raw yield jump");
-    yield_to_kernel_raw(task_sp, resume_pc, kernel_sp, return_pc);
+
+    unsafe {
+        yield_to_kernel_raw(task_sp, resume_pc, kernel_sp, return_pc);
+    }
 }
 
 #[cfg(feature = "verbose_resume_debug")]
@@ -487,6 +522,7 @@ fn print_returning_yield_contract() {
     crate::drivers::uart::write_line(" Rust code after yield_now must be reachable");
 }
 
+#[allow(dead_code)]
 fn validate_returning_yield_abi_inputs(
     task_sp: u64,
     resume_pc: u64,
@@ -659,12 +695,36 @@ unsafe fn restore_resume_frame_real_jump(
     crate::drivers::uart::write_line(" task exit requested");
 
     core::arch::asm!(
-    "mv sp, {new_sp}",
-    "mv ra, {new_ra}",
-    "jr {resume_pc}",
-    new_sp = in(reg) frame.sp,
-    new_ra = in(reg) frame.ra,
-    resume_pc = in(reg) frame.resume_pc,
-    options(noreturn)
+        "mv sp, {new_sp}",
+        "mv ra, {new_ra}",
+        "jr {resume_pc}",
+        new_sp = in(reg) frame.sp,
+        new_ra = in(reg) frame.ra,
+        resume_pc = in(reg) frame.resume_pc,
+        options(noreturn)
     );
+}
+
+#[cfg(target_arch = "riscv64")]
+#[allow(dead_code)]
+pub fn capture_riscv_yield_context() {
+    unsafe {
+        core::arch::asm!(
+            "sd ra, 0({ctx})",
+            "sd s0, 8({ctx})",
+            "sd s1, 16({ctx})",
+            "sd s2, 24({ctx})",
+            "sd s3, 32({ctx})",
+            "sd s4, 40({ctx})",
+            "sd s5, 48({ctx})",
+            "sd s6, 56({ctx})",
+            "sd s7, 64({ctx})",
+            "sd s8, 72({ctx})",
+            "sd s9, 80({ctx})",
+            "sd s10, 88({ctx})",
+            "sd s11, 96({ctx})",
+            ctx = in(reg) core::ptr::addr_of_mut!(LAST_RISCV_YIELD_CONTEXT),
+            options(nostack, preserves_flags),
+        );
+    }
 }

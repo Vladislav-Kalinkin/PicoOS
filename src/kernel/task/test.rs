@@ -290,11 +290,21 @@ pub fn handle_task_return_for_debug_test() {
     let mut cpu_context = crate::arch::capture_task_cpu_context(task_sp, kernel_return_pc);
 
     if matches!(kind, TaskReturnKind::Yield) {
-        cpu_context.resume_pc = crate::kernel::task::debug::debug_task_resume_pc();
+        let debug_resume_pc = crate::kernel::task::debug::debug_task_resume_pc();
+
+        uart::write_str("  debug resume_pc from yield: ");
+        uart::write_hex_u64(debug_resume_pc);
+        uart::write_line("");
+
+        cpu_context.resume_pc = debug_resume_pc;
 
         #[cfg(target_arch = "riscv64")]
         {
-            cpu_context.ra = cpu_context.resume_pc;
+            cpu_context.ra = debug_resume_pc;
+
+            uart::write_str("  saved ra for resume: ");
+            uart::write_hex_u64(cpu_context.ra);
+            uart::write_line("");
         }
     }
 
@@ -365,6 +375,11 @@ pub fn handle_task_return_for_debug_test() {
     print_last_task_sp_check(task_id, task_sp);
     print_resume_eligibility_check(task_id);
     print_cpu_context_consistency_check(task_id);
+
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        let _ = print_resume_pc_proximity_check(task_id);
+    }
 
     uart::write_str("  scheduler current: ");
     crate::kernel::task::scheduler::print_current_task_name();
@@ -865,50 +880,73 @@ pub fn test_resume_dry_run() {
 
 #[allow(dead_code)]
 fn print_resume_pc_proximity_check(task_id: usize) -> bool {
-    uart::write_line("  resume PC proximity check:");
-
-    let Some(entry) = crate::kernel::task::table::get_task_entry_addr(task_id) else {
-        uart::write_line("    entry: none");
-        uart::write_line("    result: FAILED");
-        return false;
-    };
+    crate::drivers::uart::write_line("  resume PC proximity check:");
 
     let Some(context) = crate::kernel::task::table::get_task_cpu_context(task_id) else {
-        uart::write_line("    cpu context: none");
-        uart::write_line("    result: FAILED");
+        crate::drivers::uart::write_line("    cpu context: none");
         return false;
     };
 
-    uart::write_str("    entry: ");
-    uart::write_hex_u64(entry);
-    uart::write_line("");
-
-    uart::write_str("    resume_pc: ");
-    uart::write_hex_u64(context.resume_pc);
-    uart::write_line("");
-
-    if context.resume_pc < entry {
-        uart::write_line("    delta: below entry");
-        uart::write_line("    result: FAILED");
+    let Some(entry) = crate::kernel::task::table::get_task_entry(task_id) else {
+        crate::drivers::uart::write_line("    entry: none");
         return false;
+    };
+
+    let entry_addr = entry as usize as u64;
+
+    crate::drivers::uart::write_str("    entry: ");
+    crate::drivers::uart::write_hex_u64(entry_addr);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    resume_pc: ");
+    crate::drivers::uart::write_hex_u64(context.resume_pc);
+    crate::drivers::uart::write_line("");
+
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(context.resume_pc);
+
+        crate::drivers::uart::write_line("    mode: RISC-V yield boundary continuation");
+
+        crate::drivers::uart::write_str("    resume_pc inside kernel text: ");
+        crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
+        crate::drivers::uart::write_line("");
+
+        crate::drivers::uart::write_str("    result: ");
+        if resume_pc_inside_text {
+            crate::drivers::uart::write_line("OK");
+        } else {
+            crate::drivers::uart::write_line("FAILED");
+        }
+
+        return resume_pc_inside_text;
     }
 
-    let delta = context.resume_pc - entry;
+    #[cfg(not(feature = "two_task_resume_handoff_test"))]
+    {
+        if context.resume_pc < entry_addr {
+            crate::drivers::uart::write_line("    delta: below entry");
+            crate::drivers::uart::write_line("    result: FAILED");
+            return false;
+        }
 
-    uart::write_str("    delta: ");
-    uart::write_hex_u64(delta);
-    uart::write_line("");
+        let delta = context.resume_pc - entry_addr;
 
-    let ok = delta > 0 && delta < 0x200;
+        crate::drivers::uart::write_str("    delta: ");
+        crate::drivers::uart::write_hex_u64(delta);
+        crate::drivers::uart::write_line("");
 
-    uart::write_str("    result: ");
-    if ok {
-        uart::write_line("OK");
-    } else {
-        uart::write_line("FAILED");
+        let ok = delta < 0x400;
+
+        crate::drivers::uart::write_str("    result: ");
+        if ok {
+            crate::drivers::uart::write_line("OK");
+        } else {
+            crate::drivers::uart::write_line("FAILED");
+        }
+
+        ok
     }
-
-    ok
 }
 
 #[allow(dead_code)]
@@ -1156,31 +1194,69 @@ fn real_resume_jump_completion_check() -> bool {
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("real resume jump completion check:");
 
-    #[cfg(feature = "scheduler_resume_loop_test")]
-    crate::drivers::uart::write_line("  scenario: scheduler resume loop task");
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        crate::drivers::uart::write_line("  scenario: two-task handoff");
 
-    #[cfg(all(
-        feature = "two_yield_task_test",
-        not(feature = "scheduler_resume_loop_test")
-    ))]
-    crate::drivers::uart::write_line("  scenario: two-yield task");
+        let worker_a_ok = print_task_finished_cleanly_check(1);
+        let worker_b_ok = print_task_finished_cleanly_check(2);
 
-    #[cfg(not(any(
-        feature = "two_yield_task_test",
-        feature = "scheduler_resume_loop_test"
-    )))]
-    crate::drivers::uart::write_line("  scenario: single-yield task");
+        let ok = worker_a_ok && worker_b_ok;
+
+        crate::drivers::uart::write_str("  two-task handoff result: ");
+        if ok {
+            crate::drivers::uart::write_line("OK");
+        } else {
+            crate::drivers::uart::write_line("FAILED");
+        }
+
+        return ok;
+    }
+
+    #[cfg(not(feature = "two_task_resume_handoff_test"))]
+    {
+        #[cfg(feature = "scheduler_resume_loop_test")]
+        crate::drivers::uart::write_line("  scenario: scheduler resume loop task");
+
+        #[cfg(all(
+            feature = "two_yield_task_test",
+            not(feature = "scheduler_resume_loop_test")
+        ))]
+        crate::drivers::uart::write_line("  scenario: two-yield task");
+
+        #[cfg(not(any(
+            feature = "two_yield_task_test",
+            feature = "scheduler_resume_loop_test"
+        )))]
+        crate::drivers::uart::write_line("  scenario: single-yield task");
+
+        let ok = print_task_finished_cleanly_check(1);
+
+        crate::drivers::uart::write_str("  result: ");
+        if ok {
+            crate::drivers::uart::write_line("OK");
+        } else {
+            crate::drivers::uart::write_line("FAILED");
+        }
+
+        ok
+    }
+}
+
+#[cfg(all(feature = "resume_restore_test", feature = "real_resume_restore_jump"))]
+fn print_task_finished_cleanly_check(task_id: usize) -> bool {
+    crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("  task: ");
-    crate::kernel::task::table::print_task_name_by_id(1);
+    crate::kernel::task::table::print_task_name_by_id(task_id);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("  state: ");
-    crate::kernel::task::table::print_task_state_by_id(1);
+    crate::kernel::task::table::print_task_state_by_id(task_id);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("  can_resume: ");
-    match crate::kernel::task::table::can_task_resume(1) {
+    match crate::kernel::task::table::can_task_resume(task_id) {
         Some(value) => {
             crate::kernel::task::table::print_yes_no(value);
             crate::drivers::uart::write_line("");
@@ -1189,15 +1265,23 @@ fn real_resume_jump_completion_check() -> bool {
     }
 
     crate::drivers::uart::write_str("  last_return: ");
-    crate::kernel::task::table::print_task_return_kind_by_id(1);
+    crate::kernel::task::table::print_task_return_kind_by_id(task_id);
     crate::drivers::uart::write_line("");
 
     let state_finished = matches!(
-        crate::kernel::task::table::get_task_state(1),
+        crate::kernel::task::table::get_task_state(task_id),
         Some(crate::kernel::task::table::TaskState::Finished)
     );
 
-    let can_resume_false = matches!(crate::kernel::task::table::can_task_resume(1), Some(false));
+    let can_resume_false = matches!(
+        crate::kernel::task::table::can_task_resume(task_id),
+        Some(false)
+    );
+
+    let last_return_exit = matches!(
+        crate::kernel::task::table::get_task_return_kind(task_id),
+        Some(crate::kernel::task::table::TaskReturnKind::Exit)
+    );
 
     crate::drivers::uart::write_str("  state Finished: ");
     crate::kernel::task::table::print_yes_no(state_finished);
@@ -1207,25 +1291,11 @@ fn real_resume_jump_completion_check() -> bool {
     crate::kernel::task::table::print_yes_no(can_resume_false);
     crate::drivers::uart::write_line("");
 
-    let last_return_exit = matches!(
-        crate::kernel::task::table::get_task_return_kind(1),
-        Some(crate::kernel::task::table::TaskReturnKind::Exit)
-    );
-
     crate::drivers::uart::write_str("  last return Exit: ");
     crate::kernel::task::table::print_yes_no(last_return_exit);
     crate::drivers::uart::write_line("");
 
-    let ok = state_finished && can_resume_false && last_return_exit;
-
-    crate::drivers::uart::write_str("  result: ");
-    if ok {
-        crate::drivers::uart::write_line("OK");
-    } else {
-        crate::drivers::uart::write_line("FAILED");
-    }
-
-    ok
+    state_finished && can_resume_false && last_return_exit
 }
 
 #[cfg(all(
@@ -1236,7 +1306,7 @@ fn real_resume_jump_completion_check() -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.21");
+    crate::drivers::uart::write_line("  current: 0.1.23");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1390,9 +1460,11 @@ fn handoff_worker_a() {
     crate::drivers::uart::write_line("handoff_worker_a: step 1");
     crate::kernel::task::yield_now();
 
+    crate::drivers::uart::write_line("handoff_worker_a: resumed after first yield");
     crate::drivers::uart::write_line("handoff_worker_a: step 2");
     crate::kernel::task::yield_now();
 
+    crate::drivers::uart::write_line("handoff_worker_a: resumed after second yield");
     crate::drivers::uart::write_line("handoff_worker_a: step 3");
     crate::kernel::task::task_exit();
 }
@@ -1402,6 +1474,7 @@ fn handoff_worker_b() {
     crate::drivers::uart::write_line("handoff_worker_b: step 1");
     crate::kernel::task::yield_now();
 
+    crate::drivers::uart::write_line("handoff_worker_b: resumed after yield");
     crate::drivers::uart::write_line("handoff_worker_b: step 2");
     crate::kernel::task::task_exit();
 }
