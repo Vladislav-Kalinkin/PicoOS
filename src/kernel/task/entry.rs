@@ -79,6 +79,40 @@ pub fn task_fault() -> ! {
     }
 }
 
+#[allow(dead_code)]
+pub fn simulated_task_trap_fault() -> ! {
+    uart::write_line("simulated task trap fault requested");
+
+    let current_sp = crate::arch::stack_pointer();
+    let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
+    let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+
+    crate::kernel::task::debug::set_debug_last_task_sp(current_sp);
+
+    uart::write_str("simulated trap current SP: ");
+    uart::write_hex_u64(current_sp);
+    uart::write_line("");
+
+    uart::write_str("simulated trap saved kernel SP: ");
+    uart::write_hex_u64(kernel_sp);
+    uart::write_line("");
+
+    uart::write_str("simulated trap return PC: ");
+    uart::write_hex_u64(return_pc);
+    uart::write_line("");
+
+    uart::write_line("simulated trap classified as task fault");
+    uart::write_line("returning to kernel stack after simulated task trap...");
+
+    crate::kernel::task::debug::set_debug_task_return_kind(
+        crate::kernel::task::table::TaskReturnKind::Fault,
+    );
+
+    unsafe {
+        crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
     let entry: TaskEntry = unsafe { core::mem::transmute(entry_addr) };
@@ -160,4 +194,3 @@ fn print_returning_yield_task_layer_precheck(
 
     ok
 }
-

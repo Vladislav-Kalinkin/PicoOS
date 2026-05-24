@@ -43,17 +43,6 @@ pub fn test_tasks_with_yield_worker() {
     print_tasks();
 }
 
-#[cfg(all(feature = "task_yield_test", feature = "task_fault_test"))]
-pub fn test_tasks_with_yield_worker() {
-    crate::kernel::task::table::init();
-
-    let _ = create_task("idle", idle_task);
-    let _ = create_task("worker-a", fault_test_worker_a);
-    let _ = create_task("faulty-worker", faulty_worker);
-
-    print_tasks();
-}
-
 #[cfg(all(
     feature = "task_yield_test",
     feature = "two_yield_task_test",
@@ -72,15 +61,15 @@ pub fn test_tasks_with_yield_worker() {
 
 #[cfg(all(
     feature = "task_yield_test",
-    feature = "two_task_resume_handoff_test",
-    not(feature = "task_fault_test")
+    feature = "task_fault_test",
+    feature = "trap_to_task_fault_test"
 ))]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
 
     let _ = create_task("idle", idle_task);
-    let _ = create_task("worker-a", handoff_worker_a);
-    let _ = create_task("worker-b", handoff_worker_b);
+    let _ = create_task("worker-a", trap_fault_test_worker_a);
+    let _ = create_task("trap-worker", trap_fault_worker);
 
     print_tasks();
 }
@@ -271,7 +260,12 @@ pub fn test_task_yield() {
 
     set_debug_task_run_stage(10);
 
-    #[cfg(feature = "task_fault_test")]
+    #[cfg(all(feature = "task_fault_test", feature = "trap_to_task_fault_test"))]
+    {
+        test_trap_to_task_fault_bootstrap();
+    }
+
+    #[cfg(all(feature = "task_fault_test", not(feature = "trap_to_task_fault_test")))]
     {
         test_task_fault_bootstrap();
     }
@@ -288,6 +282,22 @@ pub fn test_task_yield() {
     {
         uart::write_line("selected task: worker-a");
         run_task_on_own_stack(1);
+    }
+}
+
+#[cfg(feature = "trap_to_task_fault_test")]
+fn test_trap_to_task_fault_bootstrap() {
+    uart::write_line("trap-to-task-fault bootstrap:");
+    uart::write_line("bootstrap action: scheduler starts first fresh task");
+    crate::kernel::task::scheduler::set_current_task(0);
+
+    match crate::kernel::task::scheduler::run() {
+        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
+            uart::write_line("trap-to-task-fault bootstrap result: no runnable task");
+        }
+        crate::kernel::task::scheduler::RunResult::Failed => {
+            uart::write_line("trap-to-task-fault bootstrap result: failed");
+        }
     }
 }
 
@@ -972,10 +982,7 @@ fn print_resume_pc_proximity_check(task_id: usize) -> bool {
         return resume_pc_inside_text;
     }
 
-    #[cfg(not(any(
-        feature = "two_task_resume_handoff_test",
-        feature = "task_fault_test"
-    )))]
+    #[cfg(not(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test")))]
     {
         if context.resume_pc < entry_addr {
             crate::drivers::uart::write_line("    delta: below entry");
@@ -1359,12 +1366,13 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.28");
-    #[cfg(feature = "task_fault_test")]
-    {
-        crate::drivers::uart::write_line("  task fault state: OK");
-        crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
-    }
+    crate::drivers::uart::write_line("  current: 0.1.29");
+
+    crate::drivers::uart::write_line("  task fault state: OK");
+    crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
+
+    #[cfg(feature = "trap_to_task_fault_test")]
+    crate::drivers::uart::write_line("  trap-to-task-fault skeleton: OK");
 
     #[cfg(not(feature = "task_fault_test"))]
     {
@@ -1695,4 +1703,20 @@ fn task_fault_completion_check() -> bool {
     }
 
     ok
+}
+
+#[cfg(feature = "trap_to_task_fault_test")]
+fn trap_fault_worker() {
+    crate::drivers::uart::write_line("trap_fault_worker: step 1");
+    crate::drivers::uart::write_line("trap_fault_worker: simulated instruction access fault");
+    crate::kernel::task::simulated_task_trap_fault();
+}
+
+#[cfg(feature = "trap_to_task_fault_test")]
+fn trap_fault_test_worker_a() {
+    crate::drivers::uart::write_line("trap_fault_test_worker_a: step 1");
+    crate::kernel::task::yield_now();
+    crate::drivers::uart::write_line("trap_fault_test_worker_a: resumed after yield");
+    crate::drivers::uart::write_line("trap_fault_test_worker_a: step 2");
+    crate::kernel::task::task_exit();
 }

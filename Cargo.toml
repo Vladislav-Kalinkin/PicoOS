@@ -37,6 +37,7 @@ scheduler_run_test = []
 scheduler_reentry_test = []
 two_task_resume_handoff_test = []
 task_fault_test = []
+trap_to_task_fault_test = []
 
 two_task_resume_handoff_selftest = [
   "scheduler_reentry_selftest",
