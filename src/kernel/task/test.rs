@@ -268,9 +268,20 @@ pub fn test_task_yield() {
 #[cfg(feature = "two_task_resume_handoff_test")]
 fn test_two_task_resume_handoff_bootstrap() {
     uart::write_line("two-task handoff bootstrap:");
-    uart::write_line("selected task: worker-a");
+    uart::write_line("bootstrap action: scheduler starts first fresh task");
 
-    run_task_on_own_stack(1);
+    crate::kernel::task::scheduler::set_current_task(0);
+
+    match crate::kernel::task::scheduler::run() {
+        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
+            uart::write_line("two-task handoff bootstrap result: no runnable task");
+            crate::arch::halt();
+        }
+        crate::kernel::task::scheduler::RunResult::Failed => {
+            uart::write_line("two-task handoff bootstrap result: FAILED");
+            crate::arch::halt();
+        }
+    }
 }
 
 pub fn handle_task_return_for_debug_test() {
@@ -1306,7 +1317,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.26");
+    crate::drivers::uart::write_line("  current: 0.1.27");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1316,6 +1327,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  scheduler round-robin fairness: OK");
     crate::drivers::uart::write_line("  scheduler task capacity from table: OK");
     crate::drivers::uart::write_line("  scheduler fresh task dispatch: OK");
+    crate::drivers::uart::write_line("  scheduler first task dispatch: OK");
 }
 
 #[cfg(feature = "two_yield_task_test")]
