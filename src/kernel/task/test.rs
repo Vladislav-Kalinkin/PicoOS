@@ -270,6 +270,7 @@ pub fn handle_task_return_for_debug_test() {
     uart::write_line("");
 
     crate::kernel::task::table::set_task_return_kind(task_id, kind);
+    crate::kernel::task::table::set_last_returned_task_id(task_id);
 
     uart::write_str("  captured CPU context:");
     crate::kernel::task::cpu_context::print_cpu_context(cpu_context);
@@ -1200,7 +1201,7 @@ fn real_resume_jump_completion_check() -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.17");
+    crate::drivers::uart::write_line("  current: 0.1.18");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1252,16 +1253,19 @@ fn print_resume_candidate_complete() {
 
 #[cfg(feature = "scheduler_reentry_test")]
 pub fn handle_scheduler_reentry_after_task_return() {
-    const WORKER_A_TASK_ID: usize = 1;
-
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("scheduler re-entry after task return:");
 
-    let Some(snapshot) = crate::kernel::task::table::get_task_return_snapshot(WORKER_A_TASK_ID)
-    else {
-        crate::drivers::uart::write_line("scheduler re-entry result: missing task return snapshot");
+    let Some(snapshot) = crate::kernel::task::table::get_last_returned_task_snapshot() else {
+        crate::drivers::uart::write_line(
+            "scheduler re-entry result: missing last returned task snapshot",
+        );
         crate::arch::halt();
     };
+
+    crate::drivers::uart::write_str("  last returned task: ");
+    crate::kernel::task::table::print_task_name_by_id(snapshot.task_id);
+    crate::drivers::uart::write_line("");
 
     match crate::kernel::task::scheduler::handle_task_return(snapshot) {
         crate::kernel::task::scheduler::TaskReturnHandleResult::NoRunnableTask => {

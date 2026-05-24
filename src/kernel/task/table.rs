@@ -5,6 +5,7 @@ use crate::kernel::task::cpu_context::{self, TaskCpuContext};
 
 pub const MAX_TASKS: usize = 4;
 pub const TASK_NAME_LEN: usize = 16;
+static mut LAST_RETURNED_TASK_ID: Option<usize> = None;
 
 pub type TaskEntry = fn();
 
@@ -876,4 +877,21 @@ pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
         last_return,
         can_resume,
     })
+}
+
+pub fn set_last_returned_task_id(id: usize) {
+    unsafe {
+        LAST_RETURNED_TASK_ID = Some(id);
+    }
+}
+
+#[allow(dead_code)]
+pub fn get_last_returned_task_id() -> Option<usize> {
+    unsafe { LAST_RETURNED_TASK_ID }
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
+    let task_id = get_last_returned_task_id()?;
+    get_task_return_snapshot(task_id)
 }
