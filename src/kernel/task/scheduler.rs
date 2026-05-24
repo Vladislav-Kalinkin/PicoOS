@@ -265,6 +265,16 @@ fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
     scheduler_log_line("  scheduler restore path result: OK");
     scheduler_log_line("  calling arch restore from scheduler path...");
 
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        if let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) {
+            if let Some(stack_top) = crate::kernel::task::table::get_task_stack_top(task_id) {
+                crate::kernel::task::debug::set_debug_current_task_id(task_id);
+                crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
+            }
+        }
+    }
+
     unsafe {
         crate::arch::restore_verified_resume_frame(frame);
     }

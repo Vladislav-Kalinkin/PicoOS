@@ -55,7 +55,7 @@ pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
     task_trampoline(entry);
 }
 
-#[cfg(feature = "task_yield_test")]
+#[allow(dead_code)]
 pub fn yield_now() {
     let (task_sp, resume_pc) = crate::arch::capture_yield_context();
 

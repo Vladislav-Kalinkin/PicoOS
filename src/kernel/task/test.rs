@@ -27,7 +27,11 @@ pub fn test_tasks() {
     print_tasks();
 }
 
-#[cfg(all(feature = "task_yield_test", not(feature = "two_yield_task_test")))]
+#[cfg(all(
+    feature = "task_yield_test",
+    not(feature = "two_yield_task_test"),
+    not(feature = "two_task_resume_handoff_test")
+))]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
 
@@ -38,13 +42,28 @@ pub fn test_tasks_with_yield_worker() {
     print_tasks();
 }
 
-#[cfg(all(feature = "task_yield_test", feature = "two_yield_task_test"))]
+#[cfg(all(
+    feature = "task_yield_test",
+    feature = "two_yield_task_test",
+    not(feature = "two_task_resume_handoff_test")
+))]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
 
     let _ = create_task("idle", idle_task);
     let _ = create_task("worker-a", two_yielding_task);
     let _ = create_task("worker-b", worker_b_task);
+
+    print_tasks();
+}
+
+#[cfg(all(feature = "task_yield_test", feature = "two_task_resume_handoff_test"))]
+pub fn test_tasks_with_yield_worker() {
+    crate::kernel::task::table::init();
+
+    let _ = create_task("idle", idle_task);
+    let _ = create_task("worker-a", handoff_worker_a);
+    let _ = create_task("worker-b", handoff_worker_b);
 
     print_tasks();
 }
@@ -231,9 +250,25 @@ fn yielding_task() {
 pub fn test_task_yield() {
     uart::write_line("");
     uart::write_line("task yield test:");
-    uart::write_line("selected task: worker-a");
 
     set_debug_task_run_stage(10);
+
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        test_two_task_resume_handoff_bootstrap();
+    }
+
+    #[cfg(not(feature = "two_task_resume_handoff_test"))]
+    {
+        uart::write_line("selected task: worker-a");
+        run_task_on_own_stack(1);
+    }
+}
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+fn test_two_task_resume_handoff_bootstrap() {
+    uart::write_line("two-task handoff bootstrap:");
+    uart::write_line("selected task: worker-a");
 
     run_task_on_own_stack(1);
 }
@@ -1201,7 +1236,7 @@ fn real_resume_jump_completion_check() -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.20");
+    crate::drivers::uart::write_line("  current: 0.1.21");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1267,6 +1302,55 @@ pub fn handle_scheduler_reentry_after_task_return() {
     crate::kernel::task::table::print_task_name_by_id(snapshot.task_id);
     crate::drivers::uart::write_line("");
 
+    #[cfg(feature = "two_task_resume_handoff_test")]
+    {
+        let phase = get_two_task_handoff_phase();
+
+        if phase == 0 && snapshot.task_id == 1 {
+            advance_two_task_handoff_phase();
+
+            crate::drivers::uart::write_line("two-task handoff phase 0: worker-a yielded");
+            crate::drivers::uart::write_line(
+                "two-task handoff action: prepare worker-b until yield",
+            );
+
+            prepare_worker_b_until_yield();
+        }
+
+        if phase == 1 && snapshot.task_id == 2 {
+            if !matches!(
+                snapshot.last_return,
+                crate::kernel::task::table::TaskReturnKind::Yield
+            ) {
+                crate::drivers::uart::write_line("two-task handoff error: worker-b did not yield");
+                crate::arch::halt();
+            }
+
+            advance_two_task_handoff_phase();
+
+            crate::drivers::uart::write_line("two-task handoff phase 1: worker-b yielded");
+            crate::drivers::uart::write_line(
+                "two-task handoff action: continue scheduler re-entry",
+            );
+
+            match crate::kernel::task::table::find_first_resumable_task() {
+                Some(next_task_id) => {
+                    crate::drivers::uart::write_str("two-task handoff next resumable: ");
+                    crate::kernel::task::table::print_task_name_by_id(next_task_id);
+                    crate::drivers::uart::write_line("");
+
+                    prepare_debug_context_for_task(next_task_id);
+                }
+                None => {
+                    crate::drivers::uart::write_line(
+                        "two-task handoff error: no resumable task after worker-b yield",
+                    );
+                    crate::arch::halt();
+                }
+            }
+        }
+    }
+
     match crate::kernel::task::scheduler::handle_task_return(snapshot) {
         crate::kernel::task::scheduler::TaskReturnHandleResult::NoRunnableTask => {
             crate::drivers::uart::write_line("  action: completion check");
@@ -1299,4 +1383,65 @@ pub fn handle_scheduler_reentry_after_task_return() {
             crate::arch::halt();
         }
     }
+}
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+fn handoff_worker_a() {
+    crate::drivers::uart::write_line("handoff_worker_a: step 1");
+    crate::kernel::task::yield_now();
+
+    crate::drivers::uart::write_line("handoff_worker_a: step 2");
+    crate::kernel::task::yield_now();
+
+    crate::drivers::uart::write_line("handoff_worker_a: step 3");
+    crate::kernel::task::task_exit();
+}
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+fn handoff_worker_b() {
+    crate::drivers::uart::write_line("handoff_worker_b: step 1");
+    crate::kernel::task::yield_now();
+
+    crate::drivers::uart::write_line("handoff_worker_b: step 2");
+    crate::kernel::task::task_exit();
+}
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+static mut TWO_TASK_HANDOFF_PHASE: usize = 0;
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+fn get_two_task_handoff_phase() -> usize {
+    unsafe { TWO_TASK_HANDOFF_PHASE }
+}
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+fn advance_two_task_handoff_phase() {
+    unsafe {
+        TWO_TASK_HANDOFF_PHASE += 1;
+    }
+}
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+fn prepare_worker_b_until_yield() {
+    uart::write_line("");
+    uart::write_line("two-task handoff prepare:");
+    uart::write_line("selected task: worker-b");
+
+    run_task_on_own_stack(2);
+}
+
+#[cfg(feature = "two_task_resume_handoff_test")]
+fn prepare_debug_context_for_task(task_id: usize) {
+    let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) else {
+        crate::drivers::uart::write_line("two-task handoff error: missing task stack start");
+        crate::arch::halt();
+    };
+
+    let Some(stack_top) = crate::kernel::task::table::get_task_stack_top(task_id) else {
+        crate::drivers::uart::write_line("two-task handoff error: missing task stack top");
+        crate::arch::halt();
+    };
+
+    set_debug_current_task_id(task_id);
+    set_debug_current_stack_bounds(stack_start, stack_top);
 }
