@@ -1042,6 +1042,48 @@ pub fn get_task_fault_reason(id: usize) -> Option<TaskFaultReason> {
 }
 
 #[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn get_task_fault_mcause(id: usize) -> Option<u64> {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                return TASKS[slot].last_fault_mcause;
+            }
+        }
+    }
+
+    None
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn get_task_fault_mepc(id: usize) -> Option<u64> {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                return TASKS[slot].last_fault_mepc;
+            }
+        }
+    }
+
+    None
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn get_task_fault_mtval(id: usize) -> Option<u64> {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                return TASKS[slot].last_fault_mtval;
+            }
+        }
+    }
+
+    None
+}
+
+#[allow(dead_code)]
 pub fn print_task_fault_reason(reason: TaskFaultReason) {
     match reason {
         TaskFaultReason::Breakpoint => uart::write_str("breakpoint"),

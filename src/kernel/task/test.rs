@@ -1405,7 +1405,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.34");
+    crate::drivers::uart::write_line("  current: 0.1.35");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1433,6 +1433,9 @@ fn print_riscv_cooperative_resume_milestone() {
 
     #[cfg(feature = "trap_fault_metadata_test")]
     crate::drivers::uart::write_line("  trap fault metadata reporting: OK");
+
+    #[cfg(feature = "task_fault_assertions_test")]
+    crate::drivers::uart::write_line("  explicit task fault assertions: OK");
 
     #[cfg(feature = "kernel_fault_guard_test")]
     crate::drivers::uart::write_line("  kernel fault guard: OK");
@@ -1745,13 +1748,25 @@ fn task_fault_completion_check() -> bool {
 
     #[cfg(any(
         feature = "real_trap_handler_classification_test",
-        feature = "trap_fault_metadata_test"
+        feature = "trap_fault_metadata_test",
+        feature = "task_fault_assertions_test"
     ))]
     {
         if let Some(id) = find_faulted_task_for_completion_check() {
             crate::kernel::task::table::print_task_fault_info_by_id(id);
+
+            #[cfg(feature = "task_fault_assertions_test")]
+            let fault_metadata_assertions_ok = check_task_fault_metadata_assertions(id);
+
+            #[cfg(feature = "task_fault_assertions_test")]
+            if !fault_metadata_assertions_ok {
+                return false;
+            }
         } else {
             crate::drivers::uart::write_line("  fault info: faulted task not found");
+
+            #[cfg(feature = "task_fault_assertions_test")]
+            return false;
         }
     }
 
@@ -1782,7 +1797,8 @@ fn task_fault_completion_check() -> bool {
 
 #[cfg(any(
     feature = "real_trap_handler_classification_test",
-    feature = "trap_fault_metadata_test"
+    feature = "trap_fault_metadata_test",
+    feature = "task_fault_assertions_test"
 ))]
 fn find_faulted_task_for_completion_check() -> Option<usize> {
     let mut slot = 0;
@@ -1801,6 +1817,56 @@ fn find_faulted_task_for_completion_check() -> Option<usize> {
     }
 
     None
+}
+
+#[cfg(feature = "task_fault_assertions_test")]
+fn check_task_fault_metadata_assertions(id: usize) -> bool {
+    let reason_ok = matches!(
+        crate::kernel::task::table::get_task_fault_reason(id),
+        Some(crate::kernel::task::table::TaskFaultReason::Breakpoint)
+    );
+
+    let mcause_ok = matches!(
+        crate::kernel::task::table::get_task_fault_mcause(id),
+        Some(3)
+    );
+
+    let mepc_ok = crate::kernel::task::table::get_task_fault_mepc(id)
+        .map(|value| value != 0)
+        .unwrap_or(false);
+
+    let mtval_ok = crate::kernel::task::table::get_task_fault_mtval(id)
+        .map(|value| value != 0)
+        .unwrap_or(false);
+
+    crate::drivers::uart::write_line("  fault metadata assertions:");
+
+    crate::drivers::uart::write_str("    reason == breakpoint: ");
+    crate::kernel::task::table::print_yes_no(reason_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    mcause == 3: ");
+    crate::kernel::task::table::print_yes_no(mcause_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    mepc != 0: ");
+    crate::kernel::task::table::print_yes_no(mepc_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    mtval != 0: ");
+    crate::kernel::task::table::print_yes_no(mtval_ok);
+    crate::drivers::uart::write_line("");
+
+    let result = reason_ok && mcause_ok && mepc_ok && mtval_ok;
+
+    crate::drivers::uart::write_str("    result: ");
+    if result {
+        crate::drivers::uart::write_line("OK");
+    } else {
+        crate::drivers::uart::write_line("FAILED");
+    }
+
+    result
 }
 
 #[cfg(feature = "trap_to_task_fault_test")]
