@@ -54,6 +54,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
             crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
                 uart::write_line("trap handler action: marking current task as Faulted");
                 let task_id = crate::kernel::task::debug::debug_current_task_id();
+
                 crate::kernel::task::table::set_task_state(
                     task_id,
                     crate::kernel::task::table::TaskState::Faulted,
@@ -79,8 +80,20 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                     None => uart::write_line("unknown"),
                 }
 
-                uart::write_line("system halted after marking task Faulted");
-                arch::halt();
+                uart::write_line("trap handler action: returning to kernel stack");
+
+                let current_sp = crate::arch::stack_pointer();
+                let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
+                let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+
+                crate::kernel::task::debug::set_debug_last_task_sp(current_sp);
+                crate::kernel::task::debug::set_debug_task_return_kind(
+                    crate::kernel::task::table::TaskReturnKind::Fault,
+                );
+
+                unsafe {
+                    crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
+                }
             }
         }
     }
