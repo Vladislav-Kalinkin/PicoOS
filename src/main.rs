@@ -1,6 +1,10 @@
 #![no_std]
 #![no_main]
 #![cfg_attr(feature = "selftest", allow(dead_code))]
+#![cfg_attr(
+    feature = "kernel_fault_guard_test",
+    allow(dead_code, unreachable_code)
+)]
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -33,7 +37,15 @@ pub extern "C" fn kernel_main() -> ! {
         arch::init_exceptions();
         arch::print_cpu_info();
 
-        kernel::test::run_memory_tests();
+        #[cfg(feature = "kernel_fault_guard_test")]
+        {
+            kernel::task::test_kernel_fault_guard();
+        }
+
+        #[cfg(not(feature = "kernel_fault_guard_test"))]
+        {
+            kernel::test::run_memory_tests();
+        }
 
         #[cfg(feature = "task_yield_test")]
         {

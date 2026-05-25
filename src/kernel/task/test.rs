@@ -1405,20 +1405,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    #[cfg(feature = "real_trap_handler_classification_test")]
-    crate::drivers::uart::write_line("  current: 0.1.32");
-
-    #[cfg(all(
-        feature = "real_trap_classification_test",
-        not(feature = "real_trap_handler_classification_test")
-    ))]
-    crate::drivers::uart::write_line("  current: 0.1.30");
-
-    #[cfg(not(any(
-        feature = "real_trap_classification_test",
-        feature = "real_trap_handler_classification_test"
-    )))]
-    crate::drivers::uart::write_line("  current: 0.1.28");
+    crate::drivers::uart::write_line("  current: 0.1.33");
 
     crate::drivers::uart::write_line("  task fault state: OK");
     crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
@@ -1436,7 +1423,11 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  real trap classification: OK");
 
     #[cfg(feature = "real_trap_handler_classification_test")]
-    crate::drivers::uart::write_line("  real trap handler classification: OK");
+    {
+        crate::drivers::uart::write_line("  real trap handler classification: OK");
+        crate::drivers::uart::write_line("  real trap handler task-fault return path: OK");
+        crate::drivers::uart::write_line("  kernel fault guard: OK");
+    }
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1566,12 +1557,6 @@ pub fn handle_scheduler_reentry_after_task_return() {
                 {
                     if task_fault_completion_check() {
                         crate::drivers::uart::write_line("task fault scheduler result: OK");
-
-                        #[cfg(feature = "trap_to_task_fault_test")]
-                        crate::drivers::uart::write_line("  task: trap-worker");
-
-                        #[cfg(not(feature = "trap_to_task_fault_test"))]
-                        crate::drivers::uart::write_line("  task: faulty-worker");
 
                         print_riscv_cooperative_resume_milestone();
                         crate::arch::halt();
@@ -1842,4 +1827,21 @@ fn test_real_trap_handler_classification_bootstrap() {
             uart::write_line("real trap handler classification bootstrap result: failed");
         }
     }
+}
+
+#[cfg(feature = "kernel_fault_guard_test")]
+pub fn test_kernel_fault_guard() -> ! {
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("kernel fault guard test:");
+    crate::drivers::uart::write_line("triggering real trap from kernel context");
+
+    crate::kernel::task::debug::set_debug_current_task_id(0);
+
+    unsafe {
+        core::arch::asm!("ebreak", options(nomem, nostack, preserves_flags));
+    }
+
+    crate::drivers::uart::write_line("kernel fault guard result: FAILED");
+    crate::drivers::uart::write_line("kernel continued after kernel fault trap");
+    crate::arch::halt();
 }

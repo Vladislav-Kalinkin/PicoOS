@@ -61,9 +61,12 @@ fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize
         None => 0,
     };
 
-    scheduler_log_str("  find_next_dispatchable_task_after: start_slot=");
-    crate::drivers::uart::write_dec_u64(start_slot as u64);
-    scheduler_log_line("");
+    #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+    {
+        scheduler_log_str("  find_next_dispatchable_task_after: start_slot=");
+        crate::drivers::uart::write_dec_u64(start_slot as u64);
+        scheduler_log_line("");
+    }
 
     for offset in 0..max_tasks {
         let slot = (start_slot + offset) % max_tasks;
@@ -76,16 +79,21 @@ fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize
                 continue;
             };
 
-            scheduler_log_str("    checking slot=");
-            crate::drivers::uart::write_dec_u64(slot as u64);
-            scheduler_log_str(" task_id=");
-            crate::drivers::uart::write_dec_u64(task_id as u64);
-            scheduler_log_str(" state=");
-            task::print_task_state_by_id(task_id);
-            scheduler_log_line("");
+            #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+            {
+                scheduler_log_str("    checking slot=");
+                crate::drivers::uart::write_dec_u64(slot as u64);
+                scheduler_log_str(" task_id=");
+                crate::drivers::uart::write_dec_u64(task_id as u64);
+                scheduler_log_str(" state=");
+                task::print_task_state_by_id(task_id);
+                scheduler_log_line("");
+            }
 
             if matches!(state, task::TaskState::Empty) {
+                #[cfg(feature = "scheduler_verbose_dispatch_trace")]
                 scheduler_log_line("      -> empty, skip");
+
                 continue;
             }
 
@@ -93,23 +101,31 @@ fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize
             let fresh = task::is_fresh_ready_task(task_id);
             let dispatchable = resumable || fresh;
 
-            scheduler_log_str("      is_resumable=");
-            task::print_yes_no(resumable);
-            scheduler_log_str(" is_fresh_ready=");
-            task::print_yes_no(fresh);
-            scheduler_log_str(" is_dispatchable=");
-            task::print_yes_no(dispatchable);
-            scheduler_log_line("");
+            #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+            {
+                scheduler_log_str("      is_resumable=");
+                task::print_yes_no(resumable);
+                scheduler_log_str(" is_fresh_ready=");
+                task::print_yes_no(fresh);
+                scheduler_log_str(" is_dispatchable=");
+                task::print_yes_no(dispatchable);
+                scheduler_log_line("");
+            }
 
             if dispatchable {
-                scheduler_log_str("      -> FOUND: task_id=");
-                crate::drivers::uart::write_dec_u64(task_id as u64);
-                scheduler_log_line("");
+                #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+                {
+                    scheduler_log_str("      -> FOUND: task_id=");
+                    crate::drivers::uart::write_dec_u64(task_id as u64);
+                    scheduler_log_line("");
+                }
                 return Some(task_id);
             }
         }
     }
+    #[cfg(feature = "scheduler_verbose_dispatch_trace")]
     scheduler_log_line("  find_next_dispatchable_task_after: none found");
+
     None
 }
 

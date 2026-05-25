@@ -30,3 +30,6 @@ pub use test::test_resume_dry_run;
 #[cfg(feature = "resume_restore_test")]
 #[allow(unused_imports)]
 pub use test::test_resume_restore;
+
+#[cfg(feature = "kernel_fault_guard_test")]
+pub use test::test_kernel_fault_guard;
