@@ -215,6 +215,76 @@ pub fn simulated_real_trap_fault() -> ! {
         crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
             uart::write_line("simulated real trap result: task fault");
 
+            let task_id = crate::kernel::task::debug::debug_current_task_id();
+
+            // === ЗАЩИТА ОТ INFINITE TRAP LOOP ===
+            if matches!(
+                crate::kernel::task::table::get_task_state(task_id),
+                Some(crate::kernel::task::table::TaskState::Faulted)
+            ) {
+                uart::write_line("!!! DOUBLE TRAP DETECTED (simulated) !!!");
+                uart::write_str("  task already Faulted: ");
+                crate::kernel::task::table::print_task_name_by_id(task_id);
+                uart::write_line("");
+                uart::write_line("  system halted to prevent infinite trap loop");
+                crate::arch::halt();
+            }
+
+            // === НОВОЕ: читаем регистры CPU и сохраняем причину fault ===
+            // В симуляции mcause/mepc/mtval могут быть нулевыми или синтетическими,
+            // но мы обязаны пройти тот же путь, что и реальный trap handler.
+            let fault_mcause = crate::arch::cpu::mcause();
+            let fault_mepc = crate::arch::cpu::mepc();
+            let fault_mtval = crate::arch::cpu::mtval();
+            let fault_reason =
+                crate::kernel::task::table::TaskFaultReason::from_mcause(fault_mcause);
+
+            crate::kernel::task::table::set_task_fault_info(
+                task_id,
+                fault_reason,
+                fault_mcause,
+                fault_mepc,
+                fault_mtval,
+            );
+
+            // Печатаем детали fault
+            uart::write_str("  fault reason: ");
+            crate::kernel::task::table::print_task_fault_reason(fault_reason);
+            uart::write_line("");
+            uart::write_str("  fault mcause: ");
+            uart::write_hex_u64(fault_mcause);
+            uart::write_line("");
+            uart::write_str("  fault mepc:   ");
+            uart::write_hex_u64(fault_mepc);
+            uart::write_line("");
+            uart::write_str("  fault mtval:  ");
+            uart::write_hex_u64(fault_mtval);
+            uart::write_line("");
+
+            // Помечаем задачу как Faulted
+            crate::kernel::task::table::set_task_state(
+                task_id,
+                crate::kernel::task::table::TaskState::Faulted,
+            );
+            crate::kernel::task::table::set_task_return_kind(
+                task_id,
+                crate::kernel::task::table::TaskReturnKind::Fault,
+            );
+            crate::kernel::task::table::set_task_can_resume(task_id, false);
+
+            uart::write_str("  task: ");
+            crate::kernel::task::table::print_task_name_by_id(task_id);
+            uart::write_line("");
+            uart::write_str("  new state: ");
+            crate::kernel::task::table::print_task_state_by_id(task_id);
+            uart::write_line("");
+            uart::write_str("  can_resume: ");
+            match crate::kernel::task::table::can_task_resume(task_id) {
+                Some(true) => uart::write_line("yes"),
+                Some(false) => uart::write_line("no"),
+                None => uart::write_line("unknown"),
+            }
+
             let current_sp = crate::arch::stack_pointer();
             let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
             let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();

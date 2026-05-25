@@ -45,6 +45,33 @@ pub struct TaskReturnSnapshot {
     pub can_resume: bool,
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TaskFaultReason {
+    Breakpoint,
+    InstructionAccessFault,
+    LoadAccessFault,
+    StoreAccessFault,
+    IllegalInstruction,
+    Unknown(u64),
+}
+
+#[allow(dead_code)]
+impl TaskFaultReason {
+    /// Конвертирует значение mcause в конкретную причину fault.
+    /// Согласно RISC-V Privileged Spec, Table 16 (synchronous exceptions).
+    pub fn from_mcause(cause: u64) -> Self {
+        match cause {
+            1 => TaskFaultReason::InstructionAccessFault,
+            2 => TaskFaultReason::IllegalInstruction,
+            3 => TaskFaultReason::Breakpoint,
+            5 => TaskFaultReason::LoadAccessFault,
+            7 => TaskFaultReason::StoreAccessFault,
+            other => TaskFaultReason::Unknown(other),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Task {
     pub id: usize,
@@ -64,6 +91,10 @@ pub struct Task {
     pub has_started: bool,
     pub can_resume: bool,
     pub last_return_kind: TaskReturnKind,
+    pub last_fault_reason: Option<TaskFaultReason>,
+    pub last_fault_mcause: Option<u64>,
+    pub last_fault_mepc: Option<u64>,
+    pub last_fault_mtval: Option<u64>,
 }
 
 impl Task {
@@ -86,6 +117,10 @@ impl Task {
             has_started: false,
             can_resume: false,
             last_return_kind: TaskReturnKind::None,
+            last_fault_reason: None,
+            last_fault_mcause: None,
+            last_fault_mepc: None,
+            last_fault_mtval: None,
         }
     }
 }
@@ -913,7 +948,9 @@ pub fn is_resumable_task(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Ready))
         && matches!(can_task_resume(id), Some(true))
         && matches!(get_task_return_kind(id), Some(TaskReturnKind::Yield))
-        && get_task_resume_frame(id).map(|frame| frame.is_valid()).unwrap_or(false)
+        && get_task_resume_frame(id)
+            .map(|frame| frame.is_valid())
+            .unwrap_or(false)
 }
 
 #[allow(dead_code)]
@@ -926,4 +963,70 @@ pub fn is_fresh_ready_task(id: usize) -> bool {
 #[allow(dead_code)]
 pub fn is_dispatchable_task(id: usize) -> bool {
     is_resumable_task(id) || is_fresh_ready_task(id)
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn set_task_fault_info(
+    id: usize,
+    reason: TaskFaultReason,
+    mcause: u64,
+    mepc: u64,
+    mtval: u64,
+) -> bool {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                TASKS[slot].last_fault_reason = Some(reason);
+                TASKS[slot].last_fault_mcause = Some(mcause);
+                TASKS[slot].last_fault_mepc = Some(mepc);
+                TASKS[slot].last_fault_mtval = Some(mtval);
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn get_task_fault_reason(id: usize) -> Option<TaskFaultReason> {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                return TASKS[slot].last_fault_reason;
+            }
+        }
+    }
+    None
+}
+
+#[allow(dead_code)]
+pub fn print_task_fault_reason(reason: TaskFaultReason) {
+    match reason {
+        TaskFaultReason::Breakpoint => uart::write_str("breakpoint"),
+        TaskFaultReason::InstructionAccessFault => uart::write_str("instruction access fault"),
+        TaskFaultReason::LoadAccessFault => uart::write_str("load access fault"),
+        TaskFaultReason::StoreAccessFault => uart::write_str("store access fault"),
+        TaskFaultReason::IllegalInstruction => uart::write_str("illegal instruction"),
+        TaskFaultReason::Unknown(code) => {
+            uart::write_str("unknown (code: ");
+            uart::write_dec_u64(code);
+            uart::write_str(")");
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub fn get_task_id_at_slot(slot: usize) -> Option<usize> {
+    if slot >= MAX_TASKS {
+        return None;
+    }
+    unsafe {
+        if matches!(TASKS[slot].state, TaskState::Empty) {
+            None
+        } else {
+            Some(TASKS[slot].id)
+        }
+    }
 }

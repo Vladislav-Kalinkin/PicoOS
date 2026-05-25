@@ -115,20 +115,6 @@ README.md
 <files>
 This section contains the contents of the repository's files.
 
-<file path="scripts/test-real-trap-handler-classification-riscv.sh">
-#!/usr/bin/env bash
-set -euo pipefail
-cargo clean
-cargo build \
-  --target riscv64gc-unknown-none-elf \
-  --features "task_yield_test real_trap_handler_classification_test scheduler_reentry_test scheduler_dispatch_test scheduler_run_test scheduler_resume_loop_test resume_restore_test real_resume_restore_test real_resume_restore_jump"
-qemu-system-riscv64 \
-  -machine virt \
-  -nographic \
-  -bios none \
-  -kernel target/riscv64gc-unknown-none-elf/debug/PicoOS
-</file>
-
 <file path=".zed/settings.json">
 {
   "lsp": {
@@ -158,6 +144,20 @@ cargo build \
   --target riscv64gc-unknown-none-elf \
   --features "task_yield_test task_fault_test trap_to_task_fault_test real_trap_classification_test scheduler_reentry_test scheduler_dispatch_test scheduler_run_test scheduler_resume_loop_test resume_restore_test real_resume_restore_test real_resume_restore_jump"
 
+qemu-system-riscv64 \
+  -machine virt \
+  -nographic \
+  -bios none \
+  -kernel target/riscv64gc-unknown-none-elf/debug/PicoOS
+</file>
+
+<file path="scripts/test-real-trap-handler-classification-riscv.sh">
+#!/usr/bin/env bash
+set -euo pipefail
+cargo clean
+cargo build \
+  --target riscv64gc-unknown-none-elf \
+  --features "task_yield_test real_trap_handler_classification_test scheduler_reentry_test scheduler_dispatch_test scheduler_run_test scheduler_resume_loop_test resume_restore_test real_resume_restore_test real_resume_restore_jump"
 qemu-system-riscv64 \
   -machine virt \
   -nographic \
@@ -604,146 +604,6 @@ trap_vector:
     addi sp, sp, 224
 
     mret
-</file>
-
-<file path="src/arch/riscv64/traps.rs">
-use crate::arch;
-use crate::arch::riscv64::cpu;
-use crate::arch::riscv64::timer;
-use crate::drivers::uart;
-use crate::kernel::trap_frame::Riscv64TrapFrame;
-
-const TIMER_HZ: u64 = 1;
-
-#[no_mangle]
-pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
-    arch::disable_irq();
-
-    let cause = cpu::mcause();
-    let is_interrupt = (cause >> 63) != 0;
-    let code = cause & 0x7FFF_FFFF_FFFF_FFFF;
-
-    if is_interrupt && code == 7 {
-        handle_timer_interrupt(frame);
-        arch::enable_irq();
-        return;
-    }
-
-    uart::write_line("");
-    uart::write_line("=== RISC-V TRAP ===");
-
-    uart::write_str("trap frame: ");
-    uart::write_hex_u64(frame as u64);
-    uart::write_line("");
-
-    uart::write_str("mcause: ");
-    uart::write_hex_u64(cause);
-    uart::write_line("");
-
-    uart::write_str("mepc: ");
-    uart::write_hex_u64(cpu::mepc());
-    uart::write_line("");
-
-    uart::write_str("mtval: ");
-    uart::write_hex_u64(cpu::mtval());
-    uart::write_line("");
-
-    print_trap_cause(cause);
-
-    #[cfg(feature = "real_trap_handler_classification_test")]
-    {
-        crate::kernel::task::debug::print_trap_execution_context();
-        crate::kernel::task::fault::print_current_trap_fault_classification();
-        uart::write_line("system halted after classified trap skeleton");
-        arch::halt();
-    }
-
-    #[cfg(not(feature = "real_trap_handler_classification_test"))]
-    {
-        uart::write_line("system halted after trap");
-        arch::halt();
-    }
-}
-
-fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
-    timer::disarm_timer();
-
-    let saved_sp = frame as u64;
-    let saved_pc = cpu::mepc();
-
-    let saved_task = crate::kernel::task::scheduler::save_current_context(saved_sp, saved_pc);
-
-    let tick = crate::kernel::ticks::increment();
-
-    uart::write_str("tick: ");
-    uart::write_dec_u64(tick);
-
-    uart::write_str(" saved current: ");
-    match saved_task {
-        Some(id) => {
-            crate::kernel::task::scheduler::print_task_name(id);
-            crate::kernel::task::print_task_context_values(saved_sp, saved_pc);
-        }
-        None => uart::write_str("none"),
-    }
-
-    uart::write_str(" next task: ");
-    crate::kernel::task::scheduler::schedule_next();
-    crate::kernel::task::scheduler::print_current_task_name();
-
-    uart::write_str(" context:");
-    match crate::kernel::task::scheduler::current_task_id() {
-        Some(id) => crate::kernel::task::print_task_full_context_by_id(id),
-        None => uart::write_str(" none"),
-    }
-
-    uart::write_line("");
-
-    if crate::kernel::ticks::is_test_complete() {
-        cpu::disable_machine_timer_interrupt();
-
-        crate::kernel::test::print_test_complete();
-
-        arch::halt();
-    }
-
-    timer::arm_timer_hz(TIMER_HZ);
-}
-
-fn print_trap_cause(cause: u64) {
-    let is_interrupt = (cause >> 63) != 0;
-    let code = cause & 0x7FFF_FFFF_FFFF_FFFF;
-
-    uart::write_str("trap type: ");
-
-    if is_interrupt {
-        uart::write_line("interrupt");
-    } else {
-        uart::write_line("exception");
-    }
-
-    uart::write_str("trap code: ");
-    uart::write_dec_u64(code);
-    uart::write_line("");
-
-    uart::write_str("trap name: ");
-
-    match (is_interrupt, code) {
-        (false, 0) => uart::write_line("instruction address misaligned"),
-        (false, 1) => uart::write_line("instruction access fault"),
-        (false, 2) => uart::write_line("illegal instruction"),
-        (false, 3) => uart::write_line("breakpoint"),
-        (false, 5) => uart::write_line("load access fault"),
-        (false, 7) => uart::write_line("store access fault"),
-        (false, 8) => uart::write_line("environment call from U-mode"),
-        (false, 9) => uart::write_line("environment call from S-mode"),
-        (false, 11) => uart::write_line("environment call from M-mode"),
-        (true, 3) => uart::write_line("machine software interrupt"),
-        (true, 7) => uart::write_line("machine timer interrupt"),
-        (true, 11) => uart::write_line("machine external interrupt"),
-        _ => uart::write_line("unknown"),
-    }
-}
 </file>
 
 <file path="src/kernel/task/context.rs">
@@ -2137,6 +1997,194 @@ The goal is not to build a production OS immediately, but to create a small, und
 License is not defined yet.
 </file>
 
+<file path="src/arch/riscv64/traps.rs">
+use crate::arch;
+use crate::arch::riscv64::cpu;
+use crate::arch::riscv64::timer;
+use crate::drivers::uart;
+use crate::kernel::trap_frame::Riscv64TrapFrame;
+
+const TIMER_HZ: u64 = 1;
+
+#[no_mangle]
+pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
+    arch::disable_irq();
+
+    let cause = cpu::mcause();
+    let is_interrupt = (cause >> 63) != 0;
+    let code = cause & 0x7FFF_FFFF_FFFF_FFFF;
+
+    if is_interrupt && code == 7 {
+        handle_timer_interrupt(frame);
+        arch::enable_irq();
+        return;
+    }
+
+    uart::write_line("");
+    uart::write_line("=== RISC-V TRAP ===");
+
+    uart::write_str("trap frame: ");
+    uart::write_hex_u64(frame as u64);
+    uart::write_line("");
+
+    uart::write_str("mcause: ");
+    uart::write_hex_u64(cause);
+    uart::write_line("");
+
+    uart::write_str("mepc: ");
+    uart::write_hex_u64(cpu::mepc());
+    uart::write_line("");
+
+    uart::write_str("mtval: ");
+    uart::write_hex_u64(cpu::mtval());
+    uart::write_line("");
+
+    print_trap_cause(cause);
+
+    #[cfg(feature = "real_trap_handler_classification_test")]
+    {
+        crate::kernel::task::debug::print_trap_execution_context();
+        crate::kernel::task::fault::print_current_trap_fault_classification();
+
+        match crate::kernel::task::fault::classify_current_trap_fault() {
+            crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
+                uart::write_line("trap handler action: kernel fault -> halt");
+                arch::halt();
+            }
+
+            crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
+                uart::write_line("trap handler action: marking current task as Faulted");
+
+                let task_id = crate::kernel::task::debug::debug_current_task_id();
+
+                // === НОВОЕ: читаем регистры CPU и сохраняем причину fault ===
+                let fault_mcause = cause; // `cause` уже прочитан в начале trap handler
+                let fault_mepc = cpu::mepc();
+                let fault_mtval = cpu::mtval();
+                let fault_reason =
+                    crate::kernel::task::table::TaskFaultReason::from_mcause(fault_mcause);
+
+                crate::kernel::task::table::set_task_fault_info(
+                    task_id,
+                    fault_reason,
+                    fault_mcause,
+                    fault_mepc,
+                    fault_mtval,
+                );
+
+                // Печатаем детали fault
+                uart::write_str("  fault reason: ");
+                crate::kernel::task::table::print_task_fault_reason(fault_reason);
+                uart::write_line("");
+
+                uart::write_str("  fault mcause: ");
+                uart::write_hex_u64(fault_mcause);
+                uart::write_line("");
+
+                uart::write_str("  fault mepc:   ");
+                uart::write_hex_u64(fault_mepc);
+                uart::write_line("");
+
+                uart::write_str("  fault mtval:  ");
+                uart::write_hex_u64(fault_mtval);
+                uart::write_line("");
+
+                crate::kernel::task::table::set_task_state(
+                    task_id,
+                    crate::kernel::task::table::TaskState::Faulted,
+                );
+            }
+        }
+    }
+
+    #[cfg(not(feature = "real_trap_handler_classification_test"))]
+    {
+        uart::write_line("system halted after trap");
+        arch::halt();
+    }
+}
+
+fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
+    timer::disarm_timer();
+
+    let saved_sp = frame as u64;
+    let saved_pc = cpu::mepc();
+
+    let saved_task = crate::kernel::task::scheduler::save_current_context(saved_sp, saved_pc);
+
+    let tick = crate::kernel::ticks::increment();
+
+    uart::write_str("tick: ");
+    uart::write_dec_u64(tick);
+
+    uart::write_str(" saved current: ");
+    match saved_task {
+        Some(id) => {
+            crate::kernel::task::scheduler::print_task_name(id);
+            crate::kernel::task::print_task_context_values(saved_sp, saved_pc);
+        }
+        None => uart::write_str("none"),
+    }
+
+    uart::write_str(" next task: ");
+    crate::kernel::task::scheduler::schedule_next();
+    crate::kernel::task::scheduler::print_current_task_name();
+
+    uart::write_str(" context:");
+    match crate::kernel::task::scheduler::current_task_id() {
+        Some(id) => crate::kernel::task::print_task_full_context_by_id(id),
+        None => uart::write_str(" none"),
+    }
+
+    uart::write_line("");
+
+    if crate::kernel::ticks::is_test_complete() {
+        cpu::disable_machine_timer_interrupt();
+
+        crate::kernel::test::print_test_complete();
+
+        arch::halt();
+    }
+
+    timer::arm_timer_hz(TIMER_HZ);
+}
+
+fn print_trap_cause(cause: u64) {
+    let is_interrupt = (cause >> 63) != 0;
+    let code = cause & 0x7FFF_FFFF_FFFF_FFFF;
+
+    uart::write_str("trap type: ");
+
+    if is_interrupt {
+        uart::write_line("interrupt");
+    } else {
+        uart::write_line("exception");
+    }
+
+    uart::write_str("trap code: ");
+    uart::write_dec_u64(code);
+    uart::write_line("");
+
+    uart::write_str("trap name: ");
+
+    match (is_interrupt, code) {
+        (false, 0) => uart::write_line("instruction address misaligned"),
+        (false, 1) => uart::write_line("instruction access fault"),
+        (false, 2) => uart::write_line("illegal instruction"),
+        (false, 3) => uart::write_line("breakpoint"),
+        (false, 5) => uart::write_line("load access fault"),
+        (false, 7) => uart::write_line("store access fault"),
+        (false, 8) => uart::write_line("environment call from U-mode"),
+        (false, 9) => uart::write_line("environment call from S-mode"),
+        (false, 11) => uart::write_line("environment call from M-mode"),
+        (true, 3) => uart::write_line("machine software interrupt"),
+        (true, 7) => uart::write_line("machine timer interrupt"),
+        (true, 11) => uart::write_line("machine external interrupt"),
+        _ => uart::write_line("unknown"),
+    }
+}
+</file>
+
 <file path="src/kernel/task/mod.rs">
 pub mod context;
 pub mod cpu_context;
@@ -3209,6 +3257,33 @@ pub struct TaskReturnSnapshot {
     pub can_resume: bool,
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TaskFaultReason {
+    Breakpoint,
+    InstructionAccessFault,
+    LoadAccessFault,
+    StoreAccessFault,
+    IllegalInstruction,
+    Unknown(u64),
+}
+
+#[allow(dead_code)]
+impl TaskFaultReason {
+    /// Конвертирует значение mcause в конкретную причину fault.
+    /// Согласно RISC-V Privileged Spec, Table 16 (synchronous exceptions).
+    pub fn from_mcause(cause: u64) -> Self {
+        match cause {
+            1 => TaskFaultReason::InstructionAccessFault,
+            2 => TaskFaultReason::IllegalInstruction,
+            3 => TaskFaultReason::Breakpoint,
+            5 => TaskFaultReason::LoadAccessFault,
+            7 => TaskFaultReason::StoreAccessFault,
+            other => TaskFaultReason::Unknown(other),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Task {
     pub id: usize,
@@ -3228,6 +3303,10 @@ pub struct Task {
     pub has_started: bool,
     pub can_resume: bool,
     pub last_return_kind: TaskReturnKind,
+    pub last_fault_reason: Option<TaskFaultReason>,
+    pub last_fault_mcause: Option<u64>,
+    pub last_fault_mepc: Option<u64>,
+    pub last_fault_mtval: Option<u64>,
 }
 
 impl Task {
@@ -3250,6 +3329,10 @@ impl Task {
             has_started: false,
             can_resume: false,
             last_return_kind: TaskReturnKind::None,
+            last_fault_reason: None,
+            last_fault_mcause: None,
+            last_fault_mepc: None,
+            last_fault_mtval: None,
         }
     }
 }
@@ -4077,7 +4160,9 @@ pub fn is_resumable_task(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Ready))
         && matches!(can_task_resume(id), Some(true))
         && matches!(get_task_return_kind(id), Some(TaskReturnKind::Yield))
-        && get_task_resume_frame(id).map(|frame| frame.is_valid()).unwrap_or(false)
+        && get_task_resume_frame(id)
+            .map(|frame| frame.is_valid())
+            .unwrap_or(false)
 }
 
 #[allow(dead_code)]
@@ -4090,6 +4175,72 @@ pub fn is_fresh_ready_task(id: usize) -> bool {
 #[allow(dead_code)]
 pub fn is_dispatchable_task(id: usize) -> bool {
     is_resumable_task(id) || is_fresh_ready_task(id)
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn set_task_fault_info(
+    id: usize,
+    reason: TaskFaultReason,
+    mcause: u64,
+    mepc: u64,
+    mtval: u64,
+) -> bool {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                TASKS[slot].last_fault_reason = Some(reason);
+                TASKS[slot].last_fault_mcause = Some(mcause);
+                TASKS[slot].last_fault_mepc = Some(mepc);
+                TASKS[slot].last_fault_mtval = Some(mtval);
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn get_task_fault_reason(id: usize) -> Option<TaskFaultReason> {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                return TASKS[slot].last_fault_reason;
+            }
+        }
+    }
+    None
+}
+
+#[allow(dead_code)]
+pub fn print_task_fault_reason(reason: TaskFaultReason) {
+    match reason {
+        TaskFaultReason::Breakpoint => uart::write_str("breakpoint"),
+        TaskFaultReason::InstructionAccessFault => uart::write_str("instruction access fault"),
+        TaskFaultReason::LoadAccessFault => uart::write_str("load access fault"),
+        TaskFaultReason::StoreAccessFault => uart::write_str("store access fault"),
+        TaskFaultReason::IllegalInstruction => uart::write_str("illegal instruction"),
+        TaskFaultReason::Unknown(code) => {
+            uart::write_str("unknown (code: ");
+            uart::write_dec_u64(code);
+            uart::write_str(")");
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub fn get_task_id_at_slot(slot: usize) -> Option<usize> {
+    if slot >= MAX_TASKS {
+        return None;
+    }
+    unsafe {
+        if matches!(TASKS[slot].state, TaskState::Empty) {
+            None
+        } else {
+            Some(TASKS[slot].id)
+        }
+    }
 }
 </file>
 
@@ -4370,6 +4521,76 @@ pub fn simulated_real_trap_fault() -> ! {
         crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
             uart::write_line("simulated real trap result: task fault");
 
+            let task_id = crate::kernel::task::debug::debug_current_task_id();
+
+            // === ЗАЩИТА ОТ INFINITE TRAP LOOP ===
+            if matches!(
+                crate::kernel::task::table::get_task_state(task_id),
+                Some(crate::kernel::task::table::TaskState::Faulted)
+            ) {
+                uart::write_line("!!! DOUBLE TRAP DETECTED (simulated) !!!");
+                uart::write_str("  task already Faulted: ");
+                crate::kernel::task::table::print_task_name_by_id(task_id);
+                uart::write_line("");
+                uart::write_line("  system halted to prevent infinite trap loop");
+                crate::arch::halt();
+            }
+
+            // === НОВОЕ: читаем регистры CPU и сохраняем причину fault ===
+            // В симуляции mcause/mepc/mtval могут быть нулевыми или синтетическими,
+            // но мы обязаны пройти тот же путь, что и реальный trap handler.
+            let fault_mcause = crate::arch::cpu::mcause();
+            let fault_mepc = crate::arch::cpu::mepc();
+            let fault_mtval = crate::arch::cpu::mtval();
+            let fault_reason =
+                crate::kernel::task::table::TaskFaultReason::from_mcause(fault_mcause);
+
+            crate::kernel::task::table::set_task_fault_info(
+                task_id,
+                fault_reason,
+                fault_mcause,
+                fault_mepc,
+                fault_mtval,
+            );
+
+            // Печатаем детали fault
+            uart::write_str("  fault reason: ");
+            crate::kernel::task::table::print_task_fault_reason(fault_reason);
+            uart::write_line("");
+            uart::write_str("  fault mcause: ");
+            uart::write_hex_u64(fault_mcause);
+            uart::write_line("");
+            uart::write_str("  fault mepc:   ");
+            uart::write_hex_u64(fault_mepc);
+            uart::write_line("");
+            uart::write_str("  fault mtval:  ");
+            uart::write_hex_u64(fault_mtval);
+            uart::write_line("");
+
+            // Помечаем задачу как Faulted
+            crate::kernel::task::table::set_task_state(
+                task_id,
+                crate::kernel::task::table::TaskState::Faulted,
+            );
+            crate::kernel::task::table::set_task_return_kind(
+                task_id,
+                crate::kernel::task::table::TaskReturnKind::Fault,
+            );
+            crate::kernel::task::table::set_task_can_resume(task_id, false);
+
+            uart::write_str("  task: ");
+            crate::kernel::task::table::print_task_name_by_id(task_id);
+            uart::write_line("");
+            uart::write_str("  new state: ");
+            crate::kernel::task::table::print_task_state_by_id(task_id);
+            uart::write_line("");
+            uart::write_str("  can_resume: ");
+            match crate::kernel::task::table::can_task_resume(task_id) {
+                Some(true) => uart::write_line("yes"),
+                Some(false) => uart::write_line("no"),
+                None => uart::write_line("unknown"),
+            }
+
             let current_sp = crate::arch::stack_pointer();
             let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
             let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
@@ -4450,35 +4671,68 @@ pub fn current_task_id() -> Option<usize> {
     unsafe { CURRENT_TASK_ID }
 }
 
+#[allow(unused_unsafe)]
 #[cfg(feature = "scheduler_dispatch_test")]
-fn find_next_dispatchable_task_after(task_id: Option<usize>) -> Option<usize> {
+fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize> {
     let max_tasks = task::max_tasks();
-
     if max_tasks == 0 {
         return None;
     }
 
-    let start = match task_id {
+    let start_slot = match start_after {
         Some(id) => (id + 1) % max_tasks,
         None => 0,
     };
 
-    let mut offset = 0;
+    scheduler_log_str("  find_next_dispatchable_task_after: start_slot=");
+    crate::drivers::uart::write_dec_u64(start_slot as u64);
+    scheduler_log_line("");
 
-    while offset < max_tasks {
-        let candidate = (start + offset) % max_tasks;
+    for offset in 0..max_tasks {
+        let slot = (start_slot + offset) % max_tasks;
+        unsafe {
+            // Прямой доступ к TASKS через table-функции
+            let Some(task_id) = task::get_task_id_at_slot(slot) else {
+                continue;
+            };
+            let Some(state) = task::get_task_state(task_id) else {
+                continue;
+            };
 
-        /*
-         * For scheduler resume tests we do not want idle to steal control
-         * while worker tasks are dispatchable.
-         */
-        if candidate != 0 && task::is_dispatchable_task(candidate) {
-            return Some(candidate);
+            scheduler_log_str("    checking slot=");
+            crate::drivers::uart::write_dec_u64(slot as u64);
+            scheduler_log_str(" task_id=");
+            crate::drivers::uart::write_dec_u64(task_id as u64);
+            scheduler_log_str(" state=");
+            task::print_task_state_by_id(task_id);
+            scheduler_log_line("");
+
+            if matches!(state, task::TaskState::Empty) {
+                scheduler_log_line("      -> empty, skip");
+                continue;
+            }
+
+            let resumable = task::is_resumable_task(task_id);
+            let fresh = task::is_fresh_ready_task(task_id);
+            let dispatchable = resumable || fresh;
+
+            scheduler_log_str("      is_resumable=");
+            task::print_yes_no(resumable);
+            scheduler_log_str(" is_fresh_ready=");
+            task::print_yes_no(fresh);
+            scheduler_log_str(" is_dispatchable=");
+            task::print_yes_no(dispatchable);
+            scheduler_log_line("");
+
+            if dispatchable {
+                scheduler_log_str("      -> FOUND: task_id=");
+                crate::drivers::uart::write_dec_u64(task_id as u64);
+                scheduler_log_line("");
+                return Some(task_id);
+            }
         }
-
-        offset += 1;
     }
-
+    scheduler_log_line("  find_next_dispatchable_task_after: none found");
     None
 }
 
@@ -5124,56 +5378,51 @@ pub fn test_tasks() {
     print_tasks();
 }
 
-#[cfg(all(
-    feature = "task_yield_test",
-    not(feature = "two_yield_task_test"),
-    not(feature = "two_task_resume_handoff_test"),
-    not(feature = "task_fault_test")
-))]
-pub fn test_tasks_with_yield_worker() {
-    crate::kernel::task::table::init();
-
-    let _ = create_task("idle", idle_task);
-    let _ = create_task("worker-a", yielding_task);
-    let _ = create_task("worker-b", worker_b_task);
-
-    print_tasks();
-}
-
-#[cfg(all(
-    feature = "task_yield_test",
-    feature = "two_yield_task_test",
-    not(feature = "two_task_resume_handoff_test"),
-    not(feature = "task_fault_test")
-))]
-pub fn test_tasks_with_yield_worker() {
-    crate::kernel::task::table::init();
-
-    let _ = create_task("idle", idle_task);
-    let _ = create_task("worker-a", two_yielding_task);
-    let _ = create_task("worker-b", worker_b_task);
-
-    print_tasks();
-}
-
-#[cfg(all(
-    feature = "task_yield_test",
-    feature = "task_fault_test",
-    feature = "trap_to_task_fault_test",
-    feature = "real_trap_classification_test"
-))]
-#[cfg(all(
-    feature = "task_yield_test",
-    not(feature = "two_yield_task_test"),
-    not(feature = "two_task_resume_handoff_test"),
-    not(feature = "task_fault_test"),
-    not(feature = "real_trap_handler_classification_test") // <-- ДОБАВИЛИ ЭТУ СТРОКУ
-))]
+#[cfg(feature = "task_yield_test")]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
     let _ = create_task("idle", idle_task);
+
+    // === worker-a: выбор entry point зависит от активного feature flag ===
+    #[cfg(feature = "real_trap_handler_classification_test")]
     let _ = create_task("worker-a", real_trap_handler_worker_a);
+
+    #[cfg(all(
+        feature = "real_trap_classification_test",
+        not(feature = "real_trap_handler_classification_test")
+    ))]
+    let _ = create_task("worker-a", real_trap_classification_worker_a);
+
+    #[cfg(all(
+        feature = "two_yield_task_test",
+        not(feature = "real_trap_classification_test"),
+        not(feature = "real_trap_handler_classification_test")
+    ))]
+    let _ = create_task("worker-a", two_yielding_task);
+
+    #[cfg(not(any(
+        feature = "two_yield_task_test",
+        feature = "real_trap_classification_test",
+        feature = "real_trap_handler_classification_test"
+    )))]
+    let _ = create_task("worker-a", yielding_task);
+
+    // === worker-b / trap-worker: выбор зависит от активного feature flag ===
+    #[cfg(feature = "real_trap_handler_classification_test")]
     let _ = create_task("trap-worker", real_trap_handler_worker);
+
+    #[cfg(all(
+        feature = "real_trap_classification_test",
+        not(feature = "real_trap_handler_classification_test")
+    ))]
+    let _ = create_task("trap-worker", real_trap_classification_worker);
+
+    #[cfg(not(any(
+        feature = "real_trap_classification_test",
+        feature = "real_trap_handler_classification_test"
+    )))]
+    let _ = create_task("worker-b", worker_b_task);
+
     print_tasks();
 }
 
