@@ -39,6 +39,7 @@ two_task_resume_handoff_test = []
 task_fault_test = []
 trap_to_task_fault_test = []
 real_trap_classification_test = []
+real_trap_handler_classification_test = []
 
 two_task_resume_handoff_selftest = [
   "scheduler_reentry_selftest",

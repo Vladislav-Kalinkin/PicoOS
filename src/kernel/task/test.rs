@@ -27,50 +27,51 @@ pub fn test_tasks() {
     print_tasks();
 }
 
-#[cfg(all(
-    feature = "task_yield_test",
-    not(feature = "two_yield_task_test"),
-    not(feature = "two_task_resume_handoff_test"),
-    not(feature = "task_fault_test")
-))]
-pub fn test_tasks_with_yield_worker() {
-    crate::kernel::task::table::init();
-
-    let _ = create_task("idle", idle_task);
-    let _ = create_task("worker-a", yielding_task);
-    let _ = create_task("worker-b", worker_b_task);
-
-    print_tasks();
-}
-
-#[cfg(all(
-    feature = "task_yield_test",
-    feature = "two_yield_task_test",
-    not(feature = "two_task_resume_handoff_test"),
-    not(feature = "task_fault_test")
-))]
-pub fn test_tasks_with_yield_worker() {
-    crate::kernel::task::table::init();
-
-    let _ = create_task("idle", idle_task);
-    let _ = create_task("worker-a", two_yielding_task);
-    let _ = create_task("worker-b", worker_b_task);
-
-    print_tasks();
-}
-
-#[cfg(all(
-    feature = "task_yield_test",
-    feature = "task_fault_test",
-    feature = "trap_to_task_fault_test",
-    feature = "real_trap_classification_test"
-))]
-
+#[cfg(feature = "task_yield_test")]
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
     let _ = create_task("idle", idle_task);
+
+    // === worker-a: выбор entry point зависит от активного feature flag ===
+    #[cfg(feature = "real_trap_handler_classification_test")]
+    let _ = create_task("worker-a", real_trap_handler_worker_a);
+
+    #[cfg(all(
+        feature = "real_trap_classification_test",
+        not(feature = "real_trap_handler_classification_test")
+    ))]
     let _ = create_task("worker-a", real_trap_classification_worker_a);
+
+    #[cfg(all(
+        feature = "two_yield_task_test",
+        not(feature = "real_trap_classification_test"),
+        not(feature = "real_trap_handler_classification_test")
+    ))]
+    let _ = create_task("worker-a", two_yielding_task);
+
+    #[cfg(not(any(
+        feature = "two_yield_task_test",
+        feature = "real_trap_classification_test",
+        feature = "real_trap_handler_classification_test"
+    )))]
+    let _ = create_task("worker-a", yielding_task);
+
+    // === worker-b / trap-worker: выбор зависит от активного feature flag ===
+    #[cfg(feature = "real_trap_handler_classification_test")]
+    let _ = create_task("trap-worker", real_trap_handler_worker);
+
+    #[cfg(all(
+        feature = "real_trap_classification_test",
+        not(feature = "real_trap_handler_classification_test")
+    ))]
     let _ = create_task("trap-worker", real_trap_classification_worker);
+
+    #[cfg(not(any(
+        feature = "real_trap_classification_test",
+        feature = "real_trap_handler_classification_test"
+    )))]
+    let _ = create_task("worker-b", worker_b_task);
+
     print_tasks();
 }
 
@@ -259,6 +260,15 @@ pub fn test_task_yield() {
     uart::write_line("task yield test:");
 
     set_debug_task_run_stage(10);
+
+    #[cfg(all(
+        feature = "task_yield_test",
+        feature = "real_trap_handler_classification_test",
+        not(feature = "real_trap_classification_test")
+    ))]
+    {
+        test_real_trap_handler_classification_bootstrap();
+    }
 
     #[cfg(all(
         feature = "task_fault_test",
@@ -1779,4 +1789,41 @@ fn real_trap_classification_worker_a() {
     crate::drivers::uart::write_line("real_trap_classification_worker_a: resumed after yield");
     crate::drivers::uart::write_line("real_trap_classification_worker_a: step 2");
     crate::kernel::task::task_exit();
+}
+
+#[cfg(feature = "real_trap_handler_classification_test")]
+fn real_trap_handler_worker() {
+    crate::drivers::uart::write_line("real_trap_handler_worker: step 1");
+    crate::drivers::uart::write_line("real_trap_handler_worker: triggering ebreak");
+
+    unsafe {
+        core::arch::asm!("ebreak", options(nomem, nostack, preserves_flags));
+    }
+
+    // Эта строка не должна выполниться
+    crate::drivers::uart::write_line("real_trap_handler_worker: after ebreak (should not reach)");
+}
+
+#[cfg(feature = "real_trap_handler_classification_test")]
+fn real_trap_handler_worker_a() {
+    crate::drivers::uart::write_line("real_trap_handler_worker_a: step 1");
+    crate::kernel::task::yield_now();
+    crate::drivers::uart::write_line("real_trap_handler_worker_a: resumed after yield");
+    crate::drivers::uart::write_line("real_trap_handler_worker_a: step 2");
+    crate::kernel::task::task_exit();
+}
+
+#[cfg(feature = "real_trap_handler_classification_test")]
+fn test_real_trap_handler_classification_bootstrap() {
+    uart::write_line("real trap handler classification bootstrap:");
+    uart::write_line("bootstrap action: scheduler starts first fresh task");
+    crate::kernel::task::scheduler::set_current_task(0);
+    match crate::kernel::task::scheduler::run() {
+        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
+            uart::write_line("real trap handler classification bootstrap result: no runnable task");
+        }
+        crate::kernel::task::scheduler::RunResult::Failed => {
+            uart::write_line("real trap handler classification bootstrap result: failed");
+        }
+    }
 }

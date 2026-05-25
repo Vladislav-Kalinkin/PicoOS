@@ -41,8 +41,55 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     print_trap_cause(cause);
 
-    uart::write_line("system halted after trap");
-    arch::halt();
+    #[cfg(feature = "real_trap_handler_classification_test")]
+    {
+        crate::kernel::task::debug::print_trap_execution_context();
+        crate::kernel::task::fault::print_current_trap_fault_classification();
+
+        match crate::kernel::task::fault::classify_current_trap_fault() {
+            crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
+                uart::write_line("trap handler action: kernel fault -> halt");
+                arch::halt();
+            }
+            crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
+                uart::write_line("trap handler action: marking current task as Faulted");
+                let task_id = crate::kernel::task::debug::debug_current_task_id();
+                crate::kernel::task::table::set_task_state(
+                    task_id,
+                    crate::kernel::task::table::TaskState::Faulted,
+                );
+                crate::kernel::task::table::set_task_return_kind(
+                    task_id,
+                    crate::kernel::task::table::TaskReturnKind::Fault,
+                );
+                crate::kernel::task::table::set_task_can_resume(task_id, false);
+
+                uart::write_str("  task: ");
+                crate::kernel::task::table::print_task_name_by_id(task_id);
+                uart::write_line("");
+
+                uart::write_str("  new state: ");
+                crate::kernel::task::table::print_task_state_by_id(task_id);
+                uart::write_line("");
+
+                uart::write_str("  can_resume: ");
+                match crate::kernel::task::table::can_task_resume(task_id) {
+                    Some(true) => uart::write_line("yes"),
+                    Some(false) => uart::write_line("no"),
+                    None => uart::write_line("unknown"),
+                }
+
+                uart::write_line("system halted after marking task Faulted");
+                arch::halt();
+            }
+        }
+    }
+
+    #[cfg(not(feature = "real_trap_handler_classification_test"))]
+    {
+        uart::write_line("system halted after trap");
+        arch::halt();
+    }
 }
 
 fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
