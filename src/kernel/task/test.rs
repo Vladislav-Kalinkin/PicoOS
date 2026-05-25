@@ -1405,7 +1405,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.35");
+    crate::drivers::uart::write_line("  current: 0.1.36");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1440,6 +1440,9 @@ fn print_riscv_cooperative_resume_milestone() {
     #[cfg(feature = "kernel_fault_guard_test")]
     crate::drivers::uart::write_line("  kernel fault guard: OK");
 
+    #[cfg(feature = "faulted_task_dispatch_guard_test")]
+    crate::drivers::uart::write_line("  faulted task dispatch guard: OK");
+
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1450,6 +1453,50 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  scheduler task capacity from table: OK");
     crate::drivers::uart::write_line("  scheduler fresh task dispatch: OK");
     crate::drivers::uart::write_line("  scheduler first task dispatch: OK");
+}
+
+#[cfg(feature = "faulted_task_dispatch_guard_test")]
+fn check_faulted_task_dispatch_guard(id: usize) -> bool {
+    let resumable_ok = !crate::kernel::task::table::is_resumable_task(id);
+    let fresh_ready_ok = !crate::kernel::task::table::is_fresh_ready_task(id);
+    let dispatchable_ok = !crate::kernel::task::table::is_dispatchable_task(id);
+
+    crate::drivers::uart::write_line("  faulted task dispatch guard:");
+
+    crate::drivers::uart::write_str("    faulted task resumable: ");
+    crate::kernel::task::table::print_yes_no(!resumable_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected resumable == no: ");
+    crate::kernel::task::table::print_yes_no(resumable_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    faulted task fresh-ready: ");
+    crate::kernel::task::table::print_yes_no(!fresh_ready_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected fresh-ready == no: ");
+    crate::kernel::task::table::print_yes_no(fresh_ready_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    faulted task dispatchable: ");
+    crate::kernel::task::table::print_yes_no(!dispatchable_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected dispatchable == no: ");
+    crate::kernel::task::table::print_yes_no(dispatchable_ok);
+    crate::drivers::uart::write_line("");
+
+    let result = resumable_ok && fresh_ready_ok && dispatchable_ok;
+
+    crate::drivers::uart::write_str("    result: ");
+    if result {
+        crate::drivers::uart::write_line("OK");
+    } else {
+        crate::drivers::uart::write_line("FAILED");
+    }
+
+    result
 }
 
 #[allow(dead_code)]
@@ -1749,7 +1796,8 @@ fn task_fault_completion_check() -> bool {
     #[cfg(any(
         feature = "real_trap_handler_classification_test",
         feature = "trap_fault_metadata_test",
-        feature = "task_fault_assertions_test"
+        feature = "task_fault_assertions_test",
+        feature = "faulted_task_dispatch_guard_test"
     ))]
     {
         if let Some(id) = find_faulted_task_for_completion_check() {
@@ -1762,10 +1810,21 @@ fn task_fault_completion_check() -> bool {
             if !fault_metadata_assertions_ok {
                 return false;
             }
+
+            #[cfg(feature = "faulted_task_dispatch_guard_test")]
+            let faulted_task_dispatch_guard_ok = check_faulted_task_dispatch_guard(id);
+
+            #[cfg(feature = "faulted_task_dispatch_guard_test")]
+            if !faulted_task_dispatch_guard_ok {
+                return false;
+            }
         } else {
             crate::drivers::uart::write_line("  fault info: faulted task not found");
 
-            #[cfg(feature = "task_fault_assertions_test")]
+            #[cfg(any(
+                feature = "task_fault_assertions_test",
+                feature = "faulted_task_dispatch_guard_test"
+            ))]
             return false;
         }
     }
@@ -1798,7 +1857,8 @@ fn task_fault_completion_check() -> bool {
 #[cfg(any(
     feature = "real_trap_handler_classification_test",
     feature = "trap_fault_metadata_test",
-    feature = "task_fault_assertions_test"
+    feature = "task_fault_assertions_test",
+    feature = "faulted_task_dispatch_guard_test"
 ))]
 fn find_faulted_task_for_completion_check() -> Option<usize> {
     let mut slot = 0;

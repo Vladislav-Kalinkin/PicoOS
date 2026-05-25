@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.35"
+version = "0.1.36"
 edition = "2021"
 
 [[bin]]
@@ -44,6 +44,7 @@ scheduler_verbose_dispatch_trace = []
 kernel_fault_guard_test = []
 trap_fault_metadata_test = []
 task_fault_assertions_test = []
+faulted_task_dispatch_guard_test = []
 
 two_task_resume_handoff_selftest = [
   "scheduler_reentry_selftest",
