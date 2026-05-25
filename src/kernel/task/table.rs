@@ -581,6 +581,46 @@ pub fn print_task_full_context_by_id(id: usize) {
     }
 }
 
+#[allow(dead_code)]
+pub fn print_task_fault_info_by_id(id: usize) {
+    let Some(slot) = find_slot_by_id(id) else {
+        uart::write_line("  fault info: task not found");
+        return;
+    };
+
+    let task = unsafe { TASKS[slot] };
+
+    uart::write_line("  fault info:");
+
+    uart::write_str("    reason: ");
+    match task.last_fault_reason {
+        Some(reason) => print_task_fault_reason(reason),
+        None => uart::write_str("none"),
+    }
+    uart::write_line("");
+
+    uart::write_str("    mcause: ");
+    match task.last_fault_mcause {
+        Some(value) => uart::write_hex_u64(value),
+        None => uart::write_str("none"),
+    }
+    uart::write_line("");
+
+    uart::write_str("    mepc:   ");
+    match task.last_fault_mepc {
+        Some(value) => uart::write_hex_u64(value),
+        None => uart::write_str("none"),
+    }
+    uart::write_line("");
+
+    uart::write_str("    mtval:  ");
+    match task.last_fault_mtval {
+        Some(value) => uart::write_hex_u64(value),
+        None => uart::write_str("none"),
+    }
+    uart::write_line("");
+}
+
 #[allow(clippy::needless_range_loop)]
 fn find_slot_by_id(id: usize) -> Option<usize> {
     unsafe {
@@ -1011,7 +1051,7 @@ pub fn print_task_fault_reason(reason: TaskFaultReason) {
         TaskFaultReason::IllegalInstruction => uart::write_str("illegal instruction"),
         TaskFaultReason::Unknown(code) => {
             uart::write_str("unknown (code: ");
-            uart::write_dec_u64(code);
+            uart::write_hex_u64(code);
             uart::write_str(")");
         }
     }

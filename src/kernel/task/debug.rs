@@ -11,15 +11,28 @@ static mut DEBUG_CURRENT_TASK_ID: usize = 0;
 static mut DEBUG_LAST_TASK_SP: u64 = 0;
 static mut DEBUG_TASK_RESUME_PC: u64 = 0;
 
-pub fn set_debug_last_task_sp(sp: u64) {
+#[allow(dead_code)]
+pub fn set_debug_kernel_return_pc(pc: u64) {
     unsafe {
-        DEBUG_LAST_TASK_SP = sp;
+        DEBUG_KERNEL_RETURN_PC = pc;
     }
 }
 
-pub fn debug_last_task_sp() -> u64 {
-    unsafe { DEBUG_LAST_TASK_SP }
+pub fn debug_kernel_return_pc() -> u64 {
+    unsafe { DEBUG_KERNEL_RETURN_PC }
 }
+
+#[allow(dead_code)]
+pub fn set_debug_kernel_sp_before_task(sp: u64) {
+    unsafe {
+        DEBUG_KERNEL_SP_BEFORE_TASK = sp;
+    }
+}
+
+pub fn debug_kernel_sp_before_task() -> u64 {
+    unsafe { DEBUG_KERNEL_SP_BEFORE_TASK }
+}
+
 #[allow(dead_code)]
 pub fn set_debug_current_stack_bounds(start: u64, top: u64) {
     unsafe {
@@ -38,26 +51,63 @@ pub fn debug_current_stack_top() -> u64 {
     unsafe { DEBUG_CURRENT_STACK_TOP }
 }
 
-#[allow(dead_code)]
-pub fn set_debug_kernel_sp_before_task(sp: u64) {
+pub fn set_debug_last_task_sp(sp: u64) {
     unsafe {
-        DEBUG_KERNEL_SP_BEFORE_TASK = sp;
+        DEBUG_LAST_TASK_SP = sp;
     }
 }
 
-pub fn debug_kernel_sp_before_task() -> u64 {
-    unsafe { DEBUG_KERNEL_SP_BEFORE_TASK }
+pub fn debug_last_task_sp() -> u64 {
+    unsafe { DEBUG_LAST_TASK_SP }
 }
 
 #[allow(dead_code)]
-pub fn set_debug_kernel_return_pc(pc: u64) {
+pub fn set_debug_task_run_stage(stage: u64) {
     unsafe {
-        DEBUG_KERNEL_RETURN_PC = pc;
+        DEBUG_TASK_RUN_STAGE = stage;
     }
 }
 
-pub fn debug_kernel_return_pc() -> u64 {
-    unsafe { DEBUG_KERNEL_RETURN_PC }
+pub fn debug_task_run_stage() -> u64 {
+    unsafe { DEBUG_TASK_RUN_STAGE }
+}
+
+pub fn set_debug_task_return_kind(kind: crate::kernel::task::table::TaskReturnKind) {
+    unsafe {
+        DEBUG_TASK_RETURN_KIND = kind;
+    }
+}
+
+pub fn debug_task_return_kind() -> crate::kernel::task::table::TaskReturnKind {
+    unsafe { DEBUG_TASK_RETURN_KIND }
+}
+
+#[allow(dead_code)]
+pub fn set_debug_current_task_id(id: usize) {
+    unsafe {
+        DEBUG_CURRENT_TASK_ID = id;
+    }
+}
+
+pub fn debug_current_task_id() -> usize {
+    unsafe { DEBUG_CURRENT_TASK_ID }
+}
+
+#[allow(dead_code)]
+pub fn set_debug_task_resume_pc(pc: u64) {
+    unsafe {
+        DEBUG_TASK_RESUME_PC = pc;
+    }
+}
+
+pub fn debug_task_resume_pc() -> u64 {
+    unsafe { DEBUG_TASK_RESUME_PC }
+}
+
+#[allow(dead_code)]
+pub fn set_debug_task_resume_context(task_sp: u64, resume_pc: u64) {
+    set_debug_last_task_sp(task_sp);
+    set_debug_task_resume_pc(resume_pc);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -154,55 +204,6 @@ pub extern "C" fn task_return_point() -> ! {
             crate::arch::halt();
         }
     }
-}
-
-#[allow(dead_code)]
-pub fn set_debug_task_run_stage(stage: u64) {
-    unsafe {
-        DEBUG_TASK_RUN_STAGE = stage;
-    }
-}
-
-pub fn debug_task_run_stage() -> u64 {
-    unsafe { DEBUG_TASK_RUN_STAGE }
-}
-
-pub fn set_debug_task_return_kind(kind: crate::kernel::task::table::TaskReturnKind) {
-    unsafe {
-        DEBUG_TASK_RETURN_KIND = kind;
-    }
-}
-
-pub fn debug_task_return_kind() -> crate::kernel::task::table::TaskReturnKind {
-    unsafe { DEBUG_TASK_RETURN_KIND }
-}
-
-#[allow(dead_code)]
-pub fn set_debug_current_task_id(id: usize) {
-    unsafe {
-        DEBUG_CURRENT_TASK_ID = id;
-    }
-}
-
-pub fn debug_current_task_id() -> usize {
-    unsafe { DEBUG_CURRENT_TASK_ID }
-}
-
-#[allow(dead_code)]
-pub fn set_debug_task_resume_pc(pc: u64) {
-    unsafe {
-        DEBUG_TASK_RESUME_PC = pc;
-    }
-}
-
-pub fn debug_task_resume_pc() -> u64 {
-    unsafe { DEBUG_TASK_RESUME_PC }
-}
-
-#[allow(dead_code)]
-pub fn set_debug_task_resume_context(task_sp: u64, resume_pc: u64) {
-    set_debug_last_task_sp(task_sp);
-    set_debug_task_resume_pc(resume_pc);
 }
 
 #[allow(dead_code)]

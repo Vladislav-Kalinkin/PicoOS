@@ -111,6 +111,21 @@ pub fn free_memory_start() -> u64 {
     unsafe { &__free_memory_start as *const u8 as u64 }
 }
 
+#[allow(dead_code)]
+pub fn kernel_text_start() -> u64 {
+    unsafe { &__text_start as *const u8 as usize as u64 }
+}
+
+#[allow(dead_code)]
+pub fn kernel_text_end() -> u64 {
+    unsafe { &__text_end as *const u8 as usize as u64 }
+}
+
+#[allow(dead_code)]
+pub fn is_inside_kernel_text(addr: u64) -> bool {
+    addr >= kernel_text_start() && addr < kernel_text_end()
+}
+
 pub fn print_memory_layout() {
     uart::write_line("");
     uart::write_line("memory layout:");
@@ -195,19 +210,4 @@ fn print_range(name: &str, start: u64, end: u64) {
 
 fn align_up(value: u64, align: u64) -> u64 {
     (value + align - 1) & !(align - 1)
-}
-
-#[allow(dead_code)]
-pub fn kernel_text_start() -> u64 {
-    unsafe { &__text_start as *const u8 as usize as u64 }
-}
-
-#[allow(dead_code)]
-pub fn kernel_text_end() -> u64 {
-    unsafe { &__text_end as *const u8 as usize as u64 }
-}
-
-#[allow(dead_code)]
-pub fn is_inside_kernel_text(addr: u64) -> bool {
-    addr >= kernel_text_start() && addr < kernel_text_end()
 }

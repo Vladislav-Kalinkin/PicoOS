@@ -1405,19 +1405,22 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.33");
+    crate::drivers::uart::write_line("  current: 0.1.34");
 
-    crate::drivers::uart::write_line("  task fault state: OK");
-    crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
-
-    #[cfg(feature = "trap_to_task_fault_test")]
-    crate::drivers::uart::write_line("  trap-to-task-fault skeleton: OK");
+    #[cfg(feature = "task_fault_test")]
+    {
+        crate::drivers::uart::write_line("  task fault state: OK");
+        crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
+    }
 
     #[cfg(not(feature = "task_fault_test"))]
     {
         crate::drivers::uart::write_line("  task fault state: compiled");
         crate::drivers::uart::write_line("  scheduler fault handler: compiled");
     }
+
+    #[cfg(feature = "trap_to_task_fault_test")]
+    crate::drivers::uart::write_line("  trap-to-task-fault skeleton: OK");
 
     #[cfg(feature = "real_trap_classification_test")]
     crate::drivers::uart::write_line("  real trap classification: OK");
@@ -1426,8 +1429,14 @@ fn print_riscv_cooperative_resume_milestone() {
     {
         crate::drivers::uart::write_line("  real trap handler classification: OK");
         crate::drivers::uart::write_line("  real trap handler task-fault return path: OK");
-        crate::drivers::uart::write_line("  kernel fault guard: OK");
     }
+
+    #[cfg(feature = "trap_fault_metadata_test")]
+    crate::drivers::uart::write_line("  trap fault metadata reporting: OK");
+
+    #[cfg(feature = "kernel_fault_guard_test")]
+    crate::drivers::uart::write_line("  kernel fault guard: OK");
+
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1733,6 +1742,19 @@ fn task_fault_completion_check() -> bool {
         Some(crate::kernel::task::table::TaskState::Faulted)
     ));
     crate::drivers::uart::write_line("");
+
+    #[cfg(any(
+        feature = "real_trap_handler_classification_test",
+        feature = "trap_fault_metadata_test"
+    ))]
+    {
+        if let Some(id) = find_faulted_task_for_completion_check() {
+            crate::kernel::task::table::print_task_fault_info_by_id(id);
+        } else {
+            crate::drivers::uart::write_line("  fault info: faulted task not found");
+        }
+    }
+
     crate::drivers::uart::write_str("  last return Fault: ");
     crate::kernel::task::table::print_yes_no(matches!(
         crate::kernel::task::table::get_task_return_kind(2),
@@ -1756,6 +1778,29 @@ fn task_fault_completion_check() -> bool {
     }
 
     ok
+}
+
+#[cfg(any(
+    feature = "real_trap_handler_classification_test",
+    feature = "trap_fault_metadata_test"
+))]
+fn find_faulted_task_for_completion_check() -> Option<usize> {
+    let mut slot = 0;
+
+    while slot < crate::kernel::task::table::max_tasks() {
+        if let Some(id) = crate::kernel::task::table::get_task_id_at_slot(slot) {
+            if matches!(
+                crate::kernel::task::table::get_task_state(id),
+                Some(crate::kernel::task::table::TaskState::Faulted)
+            ) {
+                return Some(id);
+            }
+        }
+
+        slot += 1;
+    }
+
+    None
 }
 
 #[cfg(feature = "trap_to_task_fault_test")]

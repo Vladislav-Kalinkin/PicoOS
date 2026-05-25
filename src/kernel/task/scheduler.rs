@@ -48,87 +48,6 @@ pub fn current_task_id() -> Option<usize> {
     unsafe { CURRENT_TASK_ID }
 }
 
-#[allow(unused_unsafe)]
-#[cfg(feature = "scheduler_dispatch_test")]
-fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize> {
-    let max_tasks = task::max_tasks();
-    if max_tasks == 0 {
-        return None;
-    }
-
-    let start_slot = match start_after {
-        Some(id) => (id + 1) % max_tasks,
-        None => 0,
-    };
-
-    #[cfg(feature = "scheduler_verbose_dispatch_trace")]
-    {
-        scheduler_log_str("  find_next_dispatchable_task_after: start_slot=");
-        crate::drivers::uart::write_dec_u64(start_slot as u64);
-        scheduler_log_line("");
-    }
-
-    for offset in 0..max_tasks {
-        let slot = (start_slot + offset) % max_tasks;
-        unsafe {
-            // Прямой доступ к TASKS через table-функции
-            let Some(task_id) = task::get_task_id_at_slot(slot) else {
-                continue;
-            };
-            let Some(state) = task::get_task_state(task_id) else {
-                continue;
-            };
-
-            #[cfg(feature = "scheduler_verbose_dispatch_trace")]
-            {
-                scheduler_log_str("    checking slot=");
-                crate::drivers::uart::write_dec_u64(slot as u64);
-                scheduler_log_str(" task_id=");
-                crate::drivers::uart::write_dec_u64(task_id as u64);
-                scheduler_log_str(" state=");
-                task::print_task_state_by_id(task_id);
-                scheduler_log_line("");
-            }
-
-            if matches!(state, task::TaskState::Empty) {
-                #[cfg(feature = "scheduler_verbose_dispatch_trace")]
-                scheduler_log_line("      -> empty, skip");
-
-                continue;
-            }
-
-            let resumable = task::is_resumable_task(task_id);
-            let fresh = task::is_fresh_ready_task(task_id);
-            let dispatchable = resumable || fresh;
-
-            #[cfg(feature = "scheduler_verbose_dispatch_trace")]
-            {
-                scheduler_log_str("      is_resumable=");
-                task::print_yes_no(resumable);
-                scheduler_log_str(" is_fresh_ready=");
-                task::print_yes_no(fresh);
-                scheduler_log_str(" is_dispatchable=");
-                task::print_yes_no(dispatchable);
-                scheduler_log_line("");
-            }
-
-            if dispatchable {
-                #[cfg(feature = "scheduler_verbose_dispatch_trace")]
-                {
-                    scheduler_log_str("      -> FOUND: task_id=");
-                    crate::drivers::uart::write_dec_u64(task_id as u64);
-                    scheduler_log_line("");
-                }
-                return Some(task_id);
-            }
-        }
-    }
-    #[cfg(feature = "scheduler_verbose_dispatch_trace")]
-    scheduler_log_line("  find_next_dispatchable_task_after: none found");
-
-    None
-}
-
 pub fn print_current_task_name() {
     match current_task_id() {
         Some(id) => task::print_task_name_by_id(id),
@@ -228,6 +147,87 @@ pub enum RunResult {
 pub enum TaskReturnHandleResult {
     NoRunnableTask,
     Failed,
+}
+
+#[allow(unused_unsafe)]
+#[cfg(feature = "scheduler_dispatch_test")]
+fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize> {
+    let max_tasks = task::max_tasks();
+    if max_tasks == 0 {
+        return None;
+    }
+
+    let start_slot = match start_after {
+        Some(id) => (id + 1) % max_tasks,
+        None => 0,
+    };
+
+    #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+    {
+        scheduler_log_str("  find_next_dispatchable_task_after: start_slot=");
+        crate::drivers::uart::write_dec_u64(start_slot as u64);
+        scheduler_log_line("");
+    }
+
+    for offset in 0..max_tasks {
+        let slot = (start_slot + offset) % max_tasks;
+        unsafe {
+            // Прямой доступ к TASKS через table-функции
+            let Some(task_id) = task::get_task_id_at_slot(slot) else {
+                continue;
+            };
+            let Some(state) = task::get_task_state(task_id) else {
+                continue;
+            };
+
+            #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+            {
+                scheduler_log_str("    checking slot=");
+                crate::drivers::uart::write_dec_u64(slot as u64);
+                scheduler_log_str(" task_id=");
+                crate::drivers::uart::write_dec_u64(task_id as u64);
+                scheduler_log_str(" state=");
+                task::print_task_state_by_id(task_id);
+                scheduler_log_line("");
+            }
+
+            if matches!(state, task::TaskState::Empty) {
+                #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+                scheduler_log_line("      -> empty, skip");
+
+                continue;
+            }
+
+            let resumable = task::is_resumable_task(task_id);
+            let fresh = task::is_fresh_ready_task(task_id);
+            let dispatchable = resumable || fresh;
+
+            #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+            {
+                scheduler_log_str("      is_resumable=");
+                task::print_yes_no(resumable);
+                scheduler_log_str(" is_fresh_ready=");
+                task::print_yes_no(fresh);
+                scheduler_log_str(" is_dispatchable=");
+                task::print_yes_no(dispatchable);
+                scheduler_log_line("");
+            }
+
+            if dispatchable {
+                #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+                {
+                    scheduler_log_str("      -> FOUND: task_id=");
+                    crate::drivers::uart::write_dec_u64(task_id as u64);
+                    scheduler_log_line("");
+                }
+                return Some(task_id);
+            }
+        }
+    }
+    #[cfg(feature = "scheduler_verbose_dispatch_trace")]
+    scheduler_log_line("  find_next_dispatchable_task_after: none found");
+
+    None
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]

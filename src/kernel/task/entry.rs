@@ -18,6 +18,13 @@ pub fn task_trampoline(entry: TaskEntry) -> ! {
     task_exit();
 }
 
+#[no_mangle]
+pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
+    let entry: TaskEntry = unsafe { core::mem::transmute(entry_addr) };
+
+    task_trampoline(entry);
+}
+
 pub fn task_exit() -> ! {
     uart::write_line("task returned; task_exit called");
 
@@ -111,13 +118,6 @@ pub fn simulated_task_trap_fault() -> ! {
     unsafe {
         crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
     }
-}
-
-#[no_mangle]
-pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
-    let entry: TaskEntry = unsafe { core::mem::transmute(entry_addr) };
-
-    task_trampoline(entry);
 }
 
 #[allow(dead_code)]
