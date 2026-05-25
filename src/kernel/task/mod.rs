@@ -5,11 +5,14 @@ pub mod entry;
 pub mod fault;
 pub mod scheduler;
 pub mod table;
+#[allow(dead_code)]
 pub mod test;
 
 pub use entry::*;
+#[allow(unused_imports)]
 pub use fault::*;
 pub use table::*;
+#[allow(unused_imports)]
 pub use test::*;
 
 #[cfg(feature = "resume_candidate_test")]

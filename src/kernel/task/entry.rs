@@ -196,7 +196,6 @@ fn print_returning_yield_task_layer_precheck(
 }
 
 #[allow(dead_code)]
-
 pub fn simulated_real_trap_fault() -> ! {
     uart::write_line("simulated real trap fault requested");
 

@@ -1408,6 +1408,9 @@ fn print_riscv_cooperative_resume_milestone() {
         crate::drivers::uart::write_line("  task fault state: compiled");
         crate::drivers::uart::write_line("  scheduler fault handler: compiled");
     }
+
+    #[cfg(feature = "real_trap_classification_test")]
+    crate::drivers::uart::write_line("  real trap classification: OK");
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
     crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
@@ -1708,8 +1711,12 @@ fn task_fault_completion_check() -> bool {
     ) && matches!(crate::kernel::task::table::can_task_resume(2), Some(false));
 
     crate::drivers::uart::write_line("");
+    #[cfg(feature = "trap_to_task_fault_test")]
+    crate::drivers::uart::write_line("  task: trap-worker");
+    #[cfg(not(feature = "trap_to_task_fault_test"))]
     crate::drivers::uart::write_line("  task: faulty-worker");
-    crate::drivers::uart::write_str("  state Faulted: ");
+
+    crate::drivers::uart::write_str("  state Faulted:  ");
     crate::kernel::task::table::print_yes_no(matches!(
         crate::kernel::task::table::get_task_state(2),
         Some(crate::kernel::task::table::TaskState::Faulted)
