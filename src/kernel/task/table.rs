@@ -1112,3 +1112,43 @@ pub fn get_task_id_at_slot(slot: usize) -> Option<usize> {
         }
     }
 }
+
+#[allow(dead_code)]
+pub fn is_task_finished(id: usize) -> bool {
+    matches!(get_task_state(id), Some(TaskState::Finished))
+}
+
+#[allow(dead_code)]
+pub fn is_task_faulted(id: usize) -> bool {
+    matches!(get_task_state(id), Some(TaskState::Faulted))
+}
+
+#[allow(dead_code)]
+pub fn is_terminal_task(id: usize) -> bool {
+    is_task_finished(id) || is_task_faulted(id)
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn count_dispatchable_tasks() -> usize {
+    let mut count = 0;
+
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if matches!(TASKS[slot].state, TaskState::Empty) {
+                continue;
+            }
+
+            if is_dispatchable_task(TASKS[slot].id) {
+                count += 1;
+            }
+        }
+    }
+
+    count
+}
+
+#[allow(dead_code)]
+pub fn has_dispatchable_tasks() -> bool {
+    count_dispatchable_tasks() > 0
+}
