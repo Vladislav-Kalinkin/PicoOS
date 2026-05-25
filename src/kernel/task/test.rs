@@ -1397,6 +1397,54 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
     state_finished && can_resume_false && last_return_exit
 }
 
+#[cfg(feature = "finished_task_dispatch_guard_test")]
+fn check_finished_task_dispatch_guard(id: usize) -> bool {
+    let resumable = crate::kernel::task::table::is_resumable_task(id);
+    let fresh_ready = crate::kernel::task::table::is_fresh_ready_task(id);
+    let dispatchable = crate::kernel::task::table::is_dispatchable_task(id);
+
+    let resumable_ok = !resumable;
+    let fresh_ready_ok = !fresh_ready;
+    let dispatchable_ok = !dispatchable;
+
+    crate::drivers::uart::write_line("  finished task dispatch guard:");
+
+    crate::drivers::uart::write_str("    finished task resumable: ");
+    crate::kernel::task::table::print_yes_no(resumable);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected resumable == no: ");
+    crate::kernel::task::table::print_yes_no(resumable_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    finished task fresh-ready: ");
+    crate::kernel::task::table::print_yes_no(fresh_ready);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected fresh-ready == no: ");
+    crate::kernel::task::table::print_yes_no(fresh_ready_ok);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    finished task dispatchable: ");
+    crate::kernel::task::table::print_yes_no(dispatchable);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected dispatchable == no: ");
+    crate::kernel::task::table::print_yes_no(dispatchable_ok);
+    crate::drivers::uart::write_line("");
+
+    let result = resumable_ok && fresh_ready_ok && dispatchable_ok;
+
+    crate::drivers::uart::write_str("    result: ");
+    if result {
+        crate::drivers::uart::write_line("OK");
+    } else {
+        crate::drivers::uart::write_line("FAILED");
+    }
+
+    result
+}
+
 #[cfg(all(
     target_arch = "riscv64",
     feature = "real_resume_restore_jump",
@@ -1405,7 +1453,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.36");
+    crate::drivers::uart::write_line("  current: 0.1.37");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1442,6 +1490,9 @@ fn print_riscv_cooperative_resume_milestone() {
 
     #[cfg(feature = "faulted_task_dispatch_guard_test")]
     crate::drivers::uart::write_line("  faulted task dispatch guard: OK");
+
+    #[cfg(feature = "finished_task_dispatch_guard_test")]
+    crate::drivers::uart::write_line("  finished task dispatch guard: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1829,6 +1880,22 @@ fn task_fault_completion_check() -> bool {
         }
     }
 
+    #[cfg(feature = "finished_task_dispatch_guard_test")]
+    {
+        if let Some(id) = find_finished_task_for_completion_check() {
+            let finished_task_dispatch_guard_ok = check_finished_task_dispatch_guard(id);
+
+            if !finished_task_dispatch_guard_ok {
+                return false;
+            }
+        } else {
+            crate::drivers::uart::write_line(
+                "  finished task dispatch guard: finished task not found",
+            );
+            return false;
+        }
+    }
+
     crate::drivers::uart::write_str("  last return Fault: ");
     crate::kernel::task::table::print_yes_no(matches!(
         crate::kernel::task::table::get_task_return_kind(2),
@@ -1852,6 +1919,26 @@ fn task_fault_completion_check() -> bool {
     }
 
     ok
+}
+
+#[cfg(feature = "finished_task_dispatch_guard_test")]
+fn find_finished_task_for_completion_check() -> Option<usize> {
+    let mut slot = 0;
+
+    while slot < crate::kernel::task::table::max_tasks() {
+        if let Some(id) = crate::kernel::task::table::get_task_id_at_slot(slot) {
+            if matches!(
+                crate::kernel::task::table::get_task_state(id),
+                Some(crate::kernel::task::table::TaskState::Finished)
+            ) {
+                return Some(id);
+            }
+        }
+
+        slot += 1;
+    }
+
+    None
 }
 
 #[cfg(any(
