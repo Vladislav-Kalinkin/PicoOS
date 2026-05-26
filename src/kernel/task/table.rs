@@ -1250,3 +1250,61 @@ pub fn get_breakpoint_fault_metadata_assertions(
         result,
     }
 }
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+pub struct TaskFaultCompletionSnapshot {
+    pub finished_task_id: Option<usize>,
+    pub faulted_task_id: Option<usize>,
+
+    pub finished_task_finished: bool,
+    pub finished_task_last_return_exit: bool,
+
+    pub faulted_task_faulted: bool,
+    pub faulted_task_last_return_fault: bool,
+    pub faulted_task_resume_disabled: bool,
+
+    pub result: bool,
+}
+
+#[allow(dead_code)]
+pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
+    let finished_task_id = find_first_finished_task();
+    let faulted_task_id = find_first_faulted_task();
+
+    let finished_task_finished = finished_task_id.map(is_task_finished).unwrap_or(false);
+
+    let finished_task_last_return_exit = finished_task_id
+        .map(|id| matches!(get_task_return_kind(id), Some(TaskReturnKind::Exit)))
+        .unwrap_or(false);
+
+    let faulted_task_faulted = faulted_task_id.map(is_task_faulted).unwrap_or(false);
+
+    let faulted_task_last_return_fault = faulted_task_id
+        .map(|id| matches!(get_task_return_kind(id), Some(TaskReturnKind::Fault)))
+        .unwrap_or(false);
+
+    let faulted_task_resume_disabled = faulted_task_id
+        .map(|id| !can_task_resume(id).unwrap_or(true))
+        .unwrap_or(false);
+
+    let result = finished_task_finished
+        && finished_task_last_return_exit
+        && faulted_task_faulted
+        && faulted_task_last_return_fault
+        && faulted_task_resume_disabled;
+
+    TaskFaultCompletionSnapshot {
+        finished_task_id,
+        faulted_task_id,
+
+        finished_task_finished,
+        finished_task_last_return_exit,
+
+        faulted_task_faulted,
+        faulted_task_last_return_fault,
+        faulted_task_resume_disabled,
+
+        result,
+    }
+}
