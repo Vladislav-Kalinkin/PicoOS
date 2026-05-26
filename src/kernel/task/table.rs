@@ -1152,3 +1152,31 @@ pub fn count_dispatchable_tasks() -> usize {
 pub fn has_dispatchable_tasks() -> bool {
     count_dispatchable_tasks() > 0
 }
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn find_first_task_by_state(state: TaskState) -> Option<usize> {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if matches!(TASKS[slot].state, TaskState::Empty) {
+                continue;
+            }
+
+            if TASKS[slot].state == state {
+                return Some(TASKS[slot].id);
+            }
+        }
+    }
+
+    None
+}
+
+#[allow(dead_code)]
+pub fn find_first_finished_task() -> Option<usize> {
+    find_first_task_by_state(TaskState::Finished)
+}
+
+#[allow(dead_code)]
+pub fn find_first_faulted_task() -> Option<usize> {
+    find_first_task_by_state(TaskState::Faulted)
+}

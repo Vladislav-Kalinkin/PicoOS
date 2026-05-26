@@ -1453,7 +1453,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.39");
+    crate::drivers::uart::write_line("  current: 0.1.40");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1498,6 +1498,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  no-runnable scheduler policy: OK");
 
     crate::drivers::uart::write_line("  task state invariants in core: OK");
+    crate::drivers::uart::write_line("  task state lookup in core: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1937,19 +1938,7 @@ fn task_fault_completion_check() -> bool {
 
 #[cfg(feature = "finished_task_dispatch_guard_test")]
 fn find_finished_task_for_completion_check() -> Option<usize> {
-    let mut slot = 0;
-
-    while slot < crate::kernel::task::table::max_tasks() {
-        if let Some(id) = crate::kernel::task::table::get_task_id_at_slot(slot) {
-            if crate::kernel::task::table::is_task_finished(id) {
-                return Some(id);
-            }
-        }
-
-        slot += 1;
-    }
-
-    None
+    crate::kernel::task::table::find_first_finished_task()
 }
 
 #[cfg(feature = "no_runnable_scheduler_policy_test")]
@@ -1988,26 +1977,8 @@ fn check_no_runnable_scheduler_policy() -> bool {
     feature = "task_fault_assertions_test",
     feature = "faulted_task_dispatch_guard_test"
 ))]
-#[cfg(any(
-    feature = "real_trap_handler_classification_test",
-    feature = "trap_fault_metadata_test",
-    feature = "task_fault_assertions_test",
-    feature = "faulted_task_dispatch_guard_test"
-))]
 fn find_faulted_task_for_completion_check() -> Option<usize> {
-    let mut slot = 0;
-
-    while slot < crate::kernel::task::table::max_tasks() {
-        if let Some(id) = crate::kernel::task::table::get_task_id_at_slot(slot) {
-            if crate::kernel::task::table::is_task_faulted(id) {
-                return Some(id);
-            }
-        }
-
-        slot += 1;
-    }
-
-    None
+    crate::kernel::task::table::find_first_faulted_task()
 }
 
 #[cfg(feature = "task_fault_assertions_test")]

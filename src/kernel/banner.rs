@@ -2,7 +2,7 @@ use crate::drivers::uart;
 
 pub fn print_boot_banner() {
     uart::write_line("================================");
-    uart::write_line("PicoOS 0.1.39");
+    uart::write_line("PicoOS 0.1.40");
     uart::write_line("early RISC-V kernel");
     uart::write_line("================================");
 }
