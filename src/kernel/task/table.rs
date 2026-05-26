@@ -1180,3 +1180,36 @@ pub fn find_first_finished_task() -> Option<usize> {
 pub fn find_first_faulted_task() -> Option<usize> {
     find_first_task_by_state(TaskState::Faulted)
 }
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+pub struct TerminalTaskDispatchInvariantSnapshot {
+    pub terminal: bool,
+    pub resumable: bool,
+    pub fresh_ready: bool,
+    pub dispatchable: bool,
+    pub result: bool,
+}
+
+#[allow(dead_code)]
+pub fn get_terminal_task_dispatch_invariants(id: usize) -> TerminalTaskDispatchInvariantSnapshot {
+    let terminal = is_terminal_task(id);
+    let resumable = is_resumable_task(id);
+    let fresh_ready = is_fresh_ready_task(id);
+    let dispatchable = is_dispatchable_task(id);
+
+    let result = terminal && !resumable && !fresh_ready && !dispatchable;
+
+    TerminalTaskDispatchInvariantSnapshot {
+        terminal,
+        resumable,
+        fresh_ready,
+        dispatchable,
+        result,
+    }
+}
+
+#[allow(dead_code)]
+pub fn validate_terminal_task_dispatch_invariants(id: usize) -> bool {
+    get_terminal_task_dispatch_invariants(id).result
+}

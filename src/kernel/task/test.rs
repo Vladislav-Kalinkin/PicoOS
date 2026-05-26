@@ -1399,50 +1399,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
 
 #[cfg(feature = "finished_task_dispatch_guard_test")]
 fn check_finished_task_dispatch_guard(id: usize) -> bool {
-    let resumable = crate::kernel::task::table::is_resumable_task(id);
-    let fresh_ready = crate::kernel::task::table::is_fresh_ready_task(id);
-    let dispatchable = crate::kernel::task::table::is_dispatchable_task(id);
-
-    let resumable_ok = !resumable;
-    let fresh_ready_ok = !fresh_ready;
-    let dispatchable_ok = !dispatchable;
-
-    crate::drivers::uart::write_line("  finished task dispatch guard:");
-
-    crate::drivers::uart::write_str("    finished task resumable: ");
-    crate::kernel::task::table::print_yes_no(resumable);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    expected resumable == no: ");
-    crate::kernel::task::table::print_yes_no(resumable_ok);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    finished task fresh-ready: ");
-    crate::kernel::task::table::print_yes_no(fresh_ready);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    expected fresh-ready == no: ");
-    crate::kernel::task::table::print_yes_no(fresh_ready_ok);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    finished task dispatchable: ");
-    crate::kernel::task::table::print_yes_no(dispatchable);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    expected dispatchable == no: ");
-    crate::kernel::task::table::print_yes_no(dispatchable_ok);
-    crate::drivers::uart::write_line("");
-
-    let result = resumable_ok && fresh_ready_ok && dispatchable_ok;
-
-    crate::drivers::uart::write_str("    result: ");
-    if result {
-        crate::drivers::uart::write_line("OK");
-    } else {
-        crate::drivers::uart::write_line("FAILED");
-    }
-
-    result
+    print_terminal_task_dispatch_guard("finished", id)
 }
 
 #[cfg(all(
@@ -1453,7 +1410,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.40");
+    crate::drivers::uart::write_line("  current: 0.1.41");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1499,6 +1456,7 @@ fn print_riscv_cooperative_resume_milestone() {
 
     crate::drivers::uart::write_line("  task state invariants in core: OK");
     crate::drivers::uart::write_line("  task state lookup in core: OK");
+    crate::drivers::uart::write_line("  terminal task dispatch invariants in core: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1514,46 +1472,7 @@ fn print_riscv_cooperative_resume_milestone() {
 
 #[cfg(feature = "faulted_task_dispatch_guard_test")]
 fn check_faulted_task_dispatch_guard(id: usize) -> bool {
-    let resumable_ok = !crate::kernel::task::table::is_resumable_task(id);
-    let fresh_ready_ok = !crate::kernel::task::table::is_fresh_ready_task(id);
-    let dispatchable_ok = !crate::kernel::task::table::is_dispatchable_task(id);
-
-    crate::drivers::uart::write_line("  faulted task dispatch guard:");
-
-    crate::drivers::uart::write_str("    faulted task resumable: ");
-    crate::kernel::task::table::print_yes_no(!resumable_ok);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    expected resumable == no: ");
-    crate::kernel::task::table::print_yes_no(resumable_ok);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    faulted task fresh-ready: ");
-    crate::kernel::task::table::print_yes_no(!fresh_ready_ok);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    expected fresh-ready == no: ");
-    crate::kernel::task::table::print_yes_no(fresh_ready_ok);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    faulted task dispatchable: ");
-    crate::kernel::task::table::print_yes_no(!dispatchable_ok);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("    expected dispatchable == no: ");
-    crate::kernel::task::table::print_yes_no(dispatchable_ok);
-    crate::drivers::uart::write_line("");
-
-    let result = resumable_ok && fresh_ready_ok && dispatchable_ok;
-
-    crate::drivers::uart::write_str("    result: ");
-    if result {
-        crate::drivers::uart::write_line("OK");
-    } else {
-        crate::drivers::uart::write_line("FAILED");
-    }
-
-    result
+    print_terminal_task_dispatch_guard("faulted", id)
 }
 
 #[allow(dead_code)]
@@ -1585,6 +1504,61 @@ fn print_resume_candidate_header() {
     {
         crate::drivers::uart::write_line("resume candidate test:");
     }
+}
+
+#[cfg(any(
+    feature = "faulted_task_dispatch_guard_test",
+    feature = "finished_task_dispatch_guard_test"
+))]
+fn print_terminal_task_dispatch_guard(label: &str, id: usize) -> bool {
+    let snapshot = crate::kernel::task::table::get_terminal_task_dispatch_invariants(id);
+
+    crate::drivers::uart::write_str("  ");
+    crate::drivers::uart::write_str(label);
+    crate::drivers::uart::write_line(" task dispatch guard:");
+
+    crate::drivers::uart::write_str("    terminal task: ");
+    crate::kernel::task::table::print_yes_no(snapshot.terminal);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    ");
+    crate::drivers::uart::write_str(label);
+    crate::drivers::uart::write_str(" task resumable: ");
+    crate::kernel::task::table::print_yes_no(snapshot.resumable);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected resumable == no: ");
+    crate::kernel::task::table::print_yes_no(!snapshot.resumable);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    ");
+    crate::drivers::uart::write_str(label);
+    crate::drivers::uart::write_str(" task fresh-ready: ");
+    crate::kernel::task::table::print_yes_no(snapshot.fresh_ready);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected fresh-ready == no: ");
+    crate::kernel::task::table::print_yes_no(!snapshot.fresh_ready);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    ");
+    crate::drivers::uart::write_str(label);
+    crate::drivers::uart::write_str(" task dispatchable: ");
+    crate::kernel::task::table::print_yes_no(snapshot.dispatchable);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    expected dispatchable == no: ");
+    crate::kernel::task::table::print_yes_no(!snapshot.dispatchable);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("    result: ");
+    if snapshot.result {
+        crate::drivers::uart::write_line("OK");
+    } else {
+        crate::drivers::uart::write_line("FAILED");
+    }
+
+    snapshot.result
 }
 
 #[cfg(feature = "resume_candidate_test")]
