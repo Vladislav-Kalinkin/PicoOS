@@ -1359,7 +1359,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.55");
+    crate::drivers::uart::write_line("  current: 0.1.56");
 
     crate::drivers::uart::write_line("  task fault state: OK");
     crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
@@ -1381,9 +1381,6 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  task completion summary in core: OK");
     crate::drivers::uart::write_line("  task completion output consolidated: OK");
     crate::drivers::uart::write_line("  scheduler fault lifecycle feature: OK");
-    crate::drivers::uart::write_line(
-        "  trap classification cfgs migrated to lifecycle feature: OK",
-    );
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1861,21 +1858,6 @@ fn real_trap_handler_worker_a() {
     crate::drivers::uart::write_line("real_trap_handler_worker_a: step 2");
 
     crate::kernel::task::task_exit();
-}
-
-#[cfg(feature = "scheduler_fault_lifecycle_test")]
-fn test_real_trap_handler_classification_bootstrap() {
-    uart::write_line("real trap handler classification bootstrap:");
-    uart::write_line("bootstrap action: scheduler starts first fresh task");
-    crate::kernel::task::scheduler::set_current_task(0);
-    match crate::kernel::task::scheduler::run() {
-        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-            uart::write_line("real trap handler classification bootstrap result: no runnable task");
-        }
-        crate::kernel::task::scheduler::RunResult::Failed => {
-            uart::write_line("real trap handler classification bootstrap result: failed");
-        }
-    }
 }
 
 #[cfg(feature = "kernel_fault_guard_test")]
