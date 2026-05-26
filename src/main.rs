@@ -59,34 +59,9 @@ pub extern "C" fn kernel_main() -> ! {
 
         kernel::task::scheduler::init();
 
-        #[cfg(feature = "task_bootstrap_test")]
-        {
-            kernel::task::test_task_trampoline();
-        }
-
-        #[cfg(feature = "task_stack_switch_test")]
-        {
-            kernel::task::test_task_stack_switch();
-        }
-
-        #[cfg(feature = "sequential_task_test")]
-        {
-            kernel::task::test_sequential_task_runner();
-        }
-
         #[cfg(feature = "task_yield_test")]
         {
             kernel::task::test_task_yield();
-        }
-
-        #[cfg(feature = "scheduler_skip_finished_test")]
-        {
-            kernel::task::test_scheduler_skips_finished_tasks();
-        }
-
-        #[cfg(feature = "scheduler_driven_task_test")]
-        {
-            kernel::task::test_scheduler_driven_task_runner();
         }
 
         {

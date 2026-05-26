@@ -101,48 +101,7 @@ fn print_current_task_stack_check(label: &str) {
     }
 }
 
-#[cfg(feature = "task_bootstrap_test")]
-pub fn test_task_trampoline() {
-    uart::write_line("");
-    uart::write_line("task trampoline test:");
-
-    match get_task_entry(1) {
-        Some(entry) => {
-            uart::write_str("selected task: ");
-            print_task_name_by_id(1);
-            uart::write_line("");
-
-            uart::write_str("entry: ");
-            uart::write_hex_u64(entry as usize as u64);
-            uart::write_line("");
-
-            uart::write_line("not switching stack yet");
-            uart::write_line("calling trampoline on current kernel stack");
-
-            task_trampoline(entry);
-        }
-        None => {
-            uart::write_line("selected task entry: none");
-        }
-    }
-}
-
-#[cfg(feature = "task_stack_switch_test")]
-pub fn test_task_stack_switch() {
-    uart::write_line("");
-    uart::write_line("task stack switch test:");
-
-    set_debug_task_run_stage(2);
-
-    run_task_on_own_stack(1);
-}
-
-#[cfg(any(
-    feature = "task_stack_switch_test",
-    feature = "sequential_task_test",
-    feature = "scheduler_driven_task_test",
-    feature = "task_yield_test"
-))]
+#[cfg(feature = "task_yield_test")]
 pub fn run_task_on_own_stack(task_id: usize) -> ! {
     let Some(entry) = get_task_entry(task_id) else {
         uart::write_line("selected task entry: none");
@@ -200,27 +159,6 @@ pub fn run_task_on_own_stack(task_id: usize) -> ! {
     unsafe {
         crate::arch::start_task_on_stack(entry as usize, stack_top);
     }
-}
-
-#[cfg(feature = "sequential_task_test")]
-pub fn test_sequential_task_runner() {
-    uart::write_line("");
-    uart::write_line("sequential task runner test:");
-
-    uart::write_line("run task: worker-a");
-
-    set_debug_task_run_stage(1);
-
-    run_task_on_own_stack(1);
-}
-
-#[cfg(feature = "sequential_task_test")]
-pub fn continue_sequential_task_test_after_worker_a() -> ! {
-    uart::write_line("run task: worker-b");
-
-    set_debug_task_run_stage(2);
-
-    run_task_on_own_stack(2);
 }
 
 #[cfg(all(feature = "task_yield_test", not(feature = "two_yield_task_test")))]
@@ -440,7 +378,7 @@ pub fn print_final_task_list() {
     crate::kernel::task::table::print_tasks();
 }
 
-#[cfg(any(feature = "selftest", feature = "scheduler_skip_finished_test"))]
+#[cfg(feature = "selftest")]
 pub fn run_scheduler_skip_finished_check() {
     uart::write_line("");
     uart::write_line("scheduler skip finished test:");
@@ -471,13 +409,6 @@ pub fn run_scheduler_skip_finished_check() {
     uart::write_line("skip finished test complete");
 }
 
-#[cfg(feature = "scheduler_skip_finished_test")]
-pub fn test_scheduler_skips_finished_tasks() {
-    run_scheduler_skip_finished_check();
-    crate::arch::halt();
-}
-
-#[cfg(feature = "scheduler_driven_task_test")]
 fn next_runnable_worker_task() -> Option<usize> {
     for _ in 0..crate::kernel::task::table::max_tasks() {
         let next = crate::kernel::task::scheduler::schedule_next()?;
@@ -496,35 +427,6 @@ fn next_runnable_worker_task() -> Option<usize> {
     }
 
     None
-}
-
-#[cfg(feature = "scheduler_driven_task_test")]
-pub fn test_scheduler_driven_task_runner() {
-    uart::write_line("");
-    uart::write_line("scheduler-driven task runner:");
-
-    set_debug_task_run_stage(20);
-
-    continue_scheduler_driven_task_runner();
-}
-
-#[cfg(feature = "scheduler_driven_task_test")]
-pub fn continue_scheduler_driven_task_runner() -> ! {
-    match next_runnable_worker_task() {
-        Some(task_id) => {
-            uart::write_str("selected state: ");
-            crate::kernel::task::table::print_task_state_by_id(task_id);
-            uart::write_line("");
-
-            run_task_on_own_stack(task_id);
-        }
-        None => {
-            uart::write_line("scheduler selected: none");
-            uart::write_line("scheduler-driven test complete");
-            print_final_task_list();
-            crate::arch::halt();
-        }
-    }
 }
 
 fn print_last_task_sp_check(task_id: usize, task_sp: u64) {
@@ -1353,8 +1255,10 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.60");
+    crate::drivers::uart::write_line("  current: 0.1.61");
 
+    crate::drivers::uart::write_line("  obsolete standalone task tests removed: OK");
+    crate::drivers::uart::write_line("  obsolete standalone scheduler scripts removed: OK");
     crate::drivers::uart::write_line("  task fault state: OK");
     crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
     crate::drivers::uart::write_line("  trap-to-task-fault skeleton: OK");

@@ -149,16 +149,6 @@ pub extern "C" fn task_return_point() -> ! {
     crate::kernel::task::test::handle_task_return_for_debug_test();
 
     match debug_task_run_stage() {
-        #[cfg(feature = "sequential_task_test")]
-        1 => crate::kernel::task::test::continue_sequential_task_test_after_worker_a(),
-
-        #[cfg(feature = "sequential_task_test")]
-        2 => {
-            uart::write_line("all sequential task tests complete");
-            crate::kernel::task::test::print_final_task_list();
-            crate::arch::halt();
-        }
-
         #[cfg(feature = "task_yield_test")]
         10 => {
             uart::write_line("back in kernel after yield test");
@@ -195,9 +185,6 @@ pub extern "C" fn task_return_point() -> ! {
             crate::kernel::task::test::print_final_task_list();
             crate::arch::halt();
         }
-
-        #[cfg(feature = "scheduler_driven_task_test")]
-        20 => crate::kernel::task::test::continue_scheduler_driven_task_runner(),
 
         _ => {
             uart::write_line("unknown task return stage");

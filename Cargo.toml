@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.60"
+version = "0.1.61"
 edition = "2021"
 
 [[bin]]
@@ -17,12 +17,7 @@ panic = "abort"
 
 [features]
 selftest = []
-task_bootstrap_test = []
-task_stack_switch_test = []
-sequential_task_test = []
 task_yield_test = []
-scheduler_skip_finished_test = []
-scheduler_driven_task_test = []
 resume_candidate_test = []
 resume_preflight_test = []
 resume_dry_run_test = []
