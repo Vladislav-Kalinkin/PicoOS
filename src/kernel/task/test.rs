@@ -1265,7 +1265,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.63");
+    crate::drivers::uart::write_line("  current: 0.1.64");
 
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("  cleanup:");
