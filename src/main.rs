@@ -89,11 +89,6 @@ pub extern "C" fn kernel_main() -> ! {
             kernel::task::test_scheduler_driven_task_runner();
         }
 
-        #[cfg(feature = "resume_candidate_test")]
-        {
-            kernel::task::test_resume_candidate_selection();
-        }
-
         {
             use crate::arch::riscv64::{cpu, timer};
 
