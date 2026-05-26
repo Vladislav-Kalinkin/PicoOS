@@ -1397,7 +1397,10 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
     state_finished && can_resume_false && last_return_exit
 }
 
-#[cfg(feature = "finished_task_dispatch_guard_test")]
+#[cfg(any(
+    feature = "finished_task_dispatch_guard_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 fn check_finished_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("finished", id)
 }
@@ -1410,7 +1413,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.49");
+    crate::drivers::uart::write_line("  current: 0.1.50");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1445,13 +1448,22 @@ fn print_riscv_cooperative_resume_milestone() {
     #[cfg(feature = "kernel_fault_guard_test")]
     crate::drivers::uart::write_line("  kernel fault guard: OK");
 
-    #[cfg(feature = "faulted_task_dispatch_guard_test")]
+    #[cfg(any(
+        feature = "faulted_task_dispatch_guard_test",
+        feature = "scheduler_fault_lifecycle_test"
+    ))]
     crate::drivers::uart::write_line("  faulted task dispatch guard: OK");
 
-    #[cfg(feature = "finished_task_dispatch_guard_test")]
+    #[cfg(any(
+        feature = "finished_task_dispatch_guard_test",
+        feature = "scheduler_fault_lifecycle_test"
+    ))]
     crate::drivers::uart::write_line("  finished task dispatch guard: OK");
 
-    #[cfg(feature = "no_runnable_scheduler_policy_test")]
+    #[cfg(any(
+        feature = "no_runnable_scheduler_policy_test",
+        feature = "scheduler_fault_lifecycle_test"
+    ))]
     crate::drivers::uart::write_line("  no-runnable scheduler policy: OK");
 
     crate::drivers::uart::write_line("  task state invariants in core: OK");
@@ -1465,6 +1477,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  no-runnable script migrated to lifecycle feature: OK");
     crate::drivers::uart::write_line("  obsolete no-runnable script removed: OK");
     crate::drivers::uart::write_line("  no-runnable policy cfg migrated to lifecycle feature: OK");
+    crate::drivers::uart::write_line("  dispatch guard cfgs migrated to lifecycle feature: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1478,7 +1491,10 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  scheduler first task dispatch: OK");
 }
 
-#[cfg(feature = "faulted_task_dispatch_guard_test")]
+#[cfg(any(
+    feature = "faulted_task_dispatch_guard_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 fn check_faulted_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("faulted", id)
 }
@@ -1516,7 +1532,8 @@ fn print_resume_candidate_header() {
 
 #[cfg(any(
     feature = "faulted_task_dispatch_guard_test",
-    feature = "finished_task_dispatch_guard_test"
+    feature = "finished_task_dispatch_guard_test",
+    feature = "scheduler_fault_lifecycle_test"
 ))]
 fn print_terminal_task_dispatch_guard(label: &str, id: usize) -> bool {
     let snapshot = crate::kernel::task::table::get_terminal_task_dispatch_invariants(id);
@@ -1787,6 +1804,7 @@ fn fault_test_worker_a() {
 fn task_fault_completion_check() -> bool {
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("task fault completion check:");
+
     let completion_snapshot = crate::kernel::task::table::get_task_fault_completion_snapshot();
 
     print_task_fault_completion_snapshot(completion_snapshot);
@@ -1795,39 +1813,49 @@ fn task_fault_completion_check() -> bool {
         feature = "real_trap_handler_classification_test",
         feature = "trap_fault_metadata_test",
         feature = "task_fault_assertions_test",
-        feature = "faulted_task_dispatch_guard_test"
+        feature = "faulted_task_dispatch_guard_test",
+        feature = "scheduler_fault_lifecycle_test"
     ))]
     {
         if let Some(id) = find_faulted_task_for_completion_check() {
             crate::kernel::task::table::print_task_fault_info_by_id(id);
 
             #[cfg(feature = "task_fault_assertions_test")]
-            let fault_metadata_assertions_ok = check_task_fault_metadata_assertions(id);
+            {
+                let fault_metadata_assertions_ok = check_task_fault_metadata_assertions(id);
 
-            #[cfg(feature = "task_fault_assertions_test")]
-            if !fault_metadata_assertions_ok {
-                return false;
+                if !fault_metadata_assertions_ok {
+                    return false;
+                }
             }
 
-            #[cfg(feature = "faulted_task_dispatch_guard_test")]
-            let faulted_task_dispatch_guard_ok = check_faulted_task_dispatch_guard(id);
+            #[cfg(any(
+                feature = "faulted_task_dispatch_guard_test",
+                feature = "scheduler_fault_lifecycle_test"
+            ))]
+            {
+                let faulted_task_dispatch_guard_ok = check_faulted_task_dispatch_guard(id);
 
-            #[cfg(feature = "faulted_task_dispatch_guard_test")]
-            if !faulted_task_dispatch_guard_ok {
-                return false;
+                if !faulted_task_dispatch_guard_ok {
+                    return false;
+                }
             }
         } else {
             crate::drivers::uart::write_line("  fault info: faulted task not found");
 
             #[cfg(any(
                 feature = "task_fault_assertions_test",
-                feature = "faulted_task_dispatch_guard_test"
+                feature = "faulted_task_dispatch_guard_test",
+                feature = "scheduler_fault_lifecycle_test"
             ))]
             return false;
         }
     }
 
-    #[cfg(feature = "finished_task_dispatch_guard_test")]
+    #[cfg(any(
+        feature = "finished_task_dispatch_guard_test",
+        feature = "scheduler_fault_lifecycle_test"
+    ))]
     {
         if let Some(id) = find_finished_task_for_completion_check() {
             let finished_task_dispatch_guard_ok = check_finished_task_dispatch_guard(id);
@@ -1843,7 +1871,10 @@ fn task_fault_completion_check() -> bool {
         }
     }
 
-    #[cfg(feature = "no_runnable_scheduler_policy_test")]
+    #[cfg(any(
+        feature = "no_runnable_scheduler_policy_test",
+        feature = "scheduler_fault_lifecycle_test"
+    ))]
     {
         let no_runnable_scheduler_policy_ok = check_no_runnable_scheduler_policy();
 
@@ -1893,7 +1924,10 @@ fn print_task_fault_completion_snapshot(
     crate::drivers::uart::write_line("");
 }
 
-#[cfg(feature = "finished_task_dispatch_guard_test")]
+#[cfg(any(
+    feature = "finished_task_dispatch_guard_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 fn find_finished_task_for_completion_check() -> Option<usize> {
     crate::kernel::task::table::find_first_finished_task()
 }
@@ -1933,7 +1967,8 @@ fn check_no_runnable_scheduler_policy() -> bool {
     feature = "real_trap_handler_classification_test",
     feature = "trap_fault_metadata_test",
     feature = "task_fault_assertions_test",
-    feature = "faulted_task_dispatch_guard_test"
+    feature = "faulted_task_dispatch_guard_test",
+    feature = "scheduler_fault_lifecycle_test"
 ))]
 fn find_faulted_task_for_completion_check() -> Option<usize> {
     crate::kernel::task::table::find_first_faulted_task()
