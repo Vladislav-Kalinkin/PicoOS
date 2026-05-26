@@ -52,5 +52,29 @@ echo "== Clippy RISC-V scheduler reentry selftest =="
 cargo clippy --features "scheduler_reentry_selftest" -- -D warnings
 
 echo
+echo "== Build RISC-V two-task handoff selftest =="
+cargo build --features "two_task_resume_handoff_selftest"
+
+echo
+echo "== Clippy RISC-V two-task handoff selftest =="
+cargo clippy --features "two_task_resume_handoff_selftest" -- -D warnings
+
+echo
+echo "== Build RISC-V scheduler fault lifecycle test =="
+cargo build --features "scheduler_fault_lifecycle_test"
+
+echo
+echo "== Clippy RISC-V scheduler fault lifecycle test =="
+cargo clippy --features "scheduler_fault_lifecycle_test" -- -D warnings
+
+echo
+echo "== Build RISC-V kernel fault guard test =="
+cargo build --features "kernel_fault_guard_test"
+
+echo
+echo "== Clippy RISC-V kernel fault guard test =="
+cargo clippy --features "kernel_fault_guard_test" -- -D warnings
+
+echo
 echo "== All checks passed =="
 cargo clean

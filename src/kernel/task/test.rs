@@ -1170,14 +1170,14 @@ fn real_resume_jump_completion_check() -> bool {
 
         let ok = worker_a_ok && worker_b_ok;
 
-        crate::drivers::uart::write_str("  two-task handoff result: ");
+        crate::drivers::uart::write_str("    result: ");
         if ok {
             crate::drivers::uart::write_line("OK");
         } else {
             crate::drivers::uart::write_line("FAILED");
         }
 
-        return ok;
+        ok
     }
 
     #[cfg(not(feature = "two_task_resume_handoff_test"))]
@@ -1278,7 +1278,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.61");
+    crate::drivers::uart::write_line("  current: 0.1.62");
 
     crate::drivers::uart::write_line("  obsolete standalone task tests removed: OK");
     crate::drivers::uart::write_line("  obsolete standalone scheduler scripts removed: OK");
