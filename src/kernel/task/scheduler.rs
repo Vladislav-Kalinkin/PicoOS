@@ -149,6 +149,29 @@ pub enum TaskReturnHandleResult {
     Failed,
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+pub struct NoRunnableSchedulerSnapshot {
+    pub dispatchable_count: usize,
+    pub has_dispatchable_tasks: bool,
+    pub no_runnable: bool,
+    pub result: bool,
+}
+
+#[allow(dead_code)]
+pub fn get_no_runnable_scheduler_snapshot() -> NoRunnableSchedulerSnapshot {
+    let dispatchable_count = crate::kernel::task::table::count_dispatchable_tasks();
+    let has_dispatchable_tasks = crate::kernel::task::table::has_dispatchable_tasks();
+    let no_runnable = !has_dispatchable_tasks;
+
+    NoRunnableSchedulerSnapshot {
+        dispatchable_count,
+        has_dispatchable_tasks,
+        no_runnable,
+        result: no_runnable && dispatchable_count == 0,
+    }
+}
+
 #[allow(unused_unsafe)]
 #[cfg(feature = "scheduler_dispatch_test")]
 fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize> {

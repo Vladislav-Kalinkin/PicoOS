@@ -1410,7 +1410,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.41");
+    crate::drivers::uart::write_line("  current: 0.1.42");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1457,6 +1457,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  task state invariants in core: OK");
     crate::drivers::uart::write_line("  task state lookup in core: OK");
     crate::drivers::uart::write_line("  terminal task dispatch invariants in core: OK");
+    crate::drivers::uart::write_line("  no-runnable scheduler snapshot in core: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1917,32 +1918,30 @@ fn find_finished_task_for_completion_check() -> Option<usize> {
 
 #[cfg(feature = "no_runnable_scheduler_policy_test")]
 fn check_no_runnable_scheduler_policy() -> bool {
-    let dispatchable_count = crate::kernel::task::table::count_dispatchable_tasks();
-    let has_dispatchable_tasks = crate::kernel::task::table::has_dispatchable_tasks();
-    let no_dispatchable_tasks = !has_dispatchable_tasks;
+    let snapshot = crate::kernel::task::scheduler::get_no_runnable_scheduler_snapshot();
 
     crate::drivers::uart::write_line("  no-runnable scheduler policy:");
 
     crate::drivers::uart::write_str("    dispatchable tasks remaining: ");
-    crate::kernel::task::table::print_yes_no(has_dispatchable_tasks);
+    crate::kernel::task::table::print_yes_no(snapshot.has_dispatchable_tasks);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("    expected remaining == no: ");
-    crate::kernel::task::table::print_yes_no(no_dispatchable_tasks);
+    crate::kernel::task::table::print_yes_no(snapshot.no_runnable);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("    dispatchable count: ");
-    crate::drivers::uart::write_dec_u64(dispatchable_count as u64);
+    crate::drivers::uart::write_dec_u64(snapshot.dispatchable_count as u64);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("    result: ");
-    if no_dispatchable_tasks {
+    if snapshot.result {
         crate::drivers::uart::write_line("OK");
     } else {
         crate::drivers::uart::write_line("FAILED");
     }
 
-    no_dispatchable_tasks
+    snapshot.result
 }
 
 #[cfg(any(
