@@ -1410,7 +1410,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.44");
+    crate::drivers::uart::write_line("  current: 0.1.45");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1460,6 +1460,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  no-runnable scheduler snapshot in core: OK");
     crate::drivers::uart::write_line("  fault metadata assertions in core: OK");
     crate::drivers::uart::write_line("  task completion summary in core: OK");
+    crate::drivers::uart::write_line("  task completion output consolidated: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1782,28 +1783,9 @@ fn fault_test_worker_a() {
 fn task_fault_completion_check() -> bool {
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("task fault completion check:");
-
     let completion_snapshot = crate::kernel::task::table::get_task_fault_completion_snapshot();
 
-    crate::drivers::uart::write_line("");
-    crate::drivers::uart::write_line("  task: worker-a");
-    crate::drivers::uart::write_str("  state Finished: ");
-    crate::kernel::task::table::print_yes_no(completion_snapshot.finished_task_finished);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("  last return Exit: ");
-    crate::kernel::task::table::print_yes_no(completion_snapshot.finished_task_last_return_exit);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_line("");
-    #[cfg(feature = "trap_to_task_fault_test")]
-    crate::drivers::uart::write_line("  task: trap-worker");
-    #[cfg(not(feature = "trap_to_task_fault_test"))]
-    crate::drivers::uart::write_line("  task: faulty-worker");
-
-    crate::drivers::uart::write_str("  state Faulted:  ");
-    crate::kernel::task::table::print_yes_no(completion_snapshot.faulted_task_faulted);
-    crate::drivers::uart::write_line("");
+    print_task_fault_completion_snapshot(completion_snapshot);
 
     #[cfg(any(
         feature = "real_trap_handler_classification_test",
@@ -1882,6 +1864,29 @@ fn task_fault_completion_check() -> bool {
     }
 
     completion_snapshot.result
+}
+
+#[cfg(feature = "task_fault_test")]
+fn print_task_fault_completion_snapshot(
+    snapshot: crate::kernel::task::table::TaskFaultCompletionSnapshot,
+) {
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  task: worker-a");
+
+    crate::drivers::uart::write_str("  state Finished: ");
+    crate::kernel::task::table::print_yes_no(snapshot.finished_task_finished);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("  last return Exit: ");
+    crate::kernel::task::table::print_yes_no(snapshot.finished_task_last_return_exit);
+    crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  task: trap-worker");
+
+    crate::drivers::uart::write_str("  state Faulted:  ");
+    crate::kernel::task::table::print_yes_no(snapshot.faulted_task_faulted);
+    crate::drivers::uart::write_line("");
 }
 
 #[cfg(feature = "finished_task_dispatch_guard_test")]
