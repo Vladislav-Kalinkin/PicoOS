@@ -65,7 +65,6 @@ fn worker_a_task() {
     print_current_task_stack_check("worker_a_task");
 }
 
-#[allow(dead_code)]
 fn worker_b_task() {
     print_current_task_stack_check("worker_b_task");
 }
@@ -929,7 +928,6 @@ pub fn test_resume_dry_run() {
     }
 }
 
-#[allow(dead_code)]
 fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     crate::drivers::uart::write_line("  resume PC proximity check:");
 
@@ -1000,7 +998,6 @@ fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     }
 }
 
-#[allow(dead_code)]
 fn print_resume_frame_check(task_id: usize) -> bool {
     uart::write_line("  resume frame check:");
 
@@ -1362,7 +1359,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.54");
+    crate::drivers::uart::write_line("  current: 0.1.55");
 
     crate::drivers::uart::write_line("  task fault state: OK");
     crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
@@ -1638,16 +1635,6 @@ fn advance_two_task_handoff_phase() {
     unsafe {
         TWO_TASK_HANDOFF_PHASE += 1;
     }
-}
-
-#[allow(dead_code)]
-#[cfg(feature = "two_task_resume_handoff_test")]
-fn prepare_worker_b_until_yield() {
-    uart::write_line("");
-    uart::write_line("two-task handoff prepare:");
-    uart::write_line("selected task: worker-b");
-
-    run_task_on_own_stack(2);
 }
 
 #[cfg(feature = "two_task_resume_handoff_test")]
