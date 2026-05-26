@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.45"
+version = "0.1.46"
 edition = "2021"
 
 [[bin]]
@@ -86,4 +86,24 @@ task_resume_selftest = [
   "real_resume_restore_jump",
   "two_yield_task_test",
   "scheduler_resume_loop_test",
+]
+
+scheduler_fault_lifecycle_test = [
+  "task_yield_test",
+  "task_fault_test",
+  "trap_to_task_fault_test",
+  "real_trap_classification_test",
+  "real_trap_handler_classification_test",
+  "trap_fault_metadata_test",
+  "task_fault_assertions_test",
+  "faulted_task_dispatch_guard_test",
+  "finished_task_dispatch_guard_test",
+  "no_runnable_scheduler_policy_test",
+  "scheduler_reentry_test",
+  "scheduler_dispatch_test",
+  "scheduler_run_test",
+  "scheduler_resume_loop_test",
+  "resume_restore_test",
+  "real_resume_restore_test",
+  "real_resume_restore_jump",
 ]
