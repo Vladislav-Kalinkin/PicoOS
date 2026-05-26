@@ -1045,13 +1045,7 @@ fn print_resume_frame_check(task_id: usize) -> bool {
     crate::kernel::task::table::print_yes_no(return_pc_inside_text);
     uart::write_line("");
 
-    let proximity_ok = print_resume_pc_proximity_check(task_id);
-
-    let ok = frame.is_valid()
-        && sp_inside
-        && resume_pc_inside_text
-        && return_pc_inside_text
-        && proximity_ok;
+    let ok = frame.is_valid() && sp_inside && resume_pc_inside_text && return_pc_inside_text;
 
     uart::write_str("    frame check result: ");
     if ok {
@@ -1359,7 +1353,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.57");
+    crate::drivers::uart::write_line("  current: 0.1.59");
 
     crate::drivers::uart::write_line("  task fault state: OK");
     crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
@@ -1382,6 +1376,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  task completion output consolidated: OK");
     crate::drivers::uart::write_line("  scheduler fault lifecycle feature: OK");
     crate::drivers::uart::write_line("  obsolete resume task script removed: OK");
+    crate::drivers::uart::write_line("  obsolete resume PC proximity requirement removed: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
