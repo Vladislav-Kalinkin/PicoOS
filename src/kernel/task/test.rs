@@ -78,10 +78,28 @@ fn worker_a_task() {
     print_current_task_stack_check("worker_a_task");
 }
 
+#[cfg(any(
+    not(feature = "task_yield_test"),
+    all(
+        feature = "task_yield_test",
+        not(feature = "two_yield_task_test"),
+        not(feature = "two_task_resume_handoff_test"),
+        not(feature = "scheduler_fault_lifecycle_test")
+    )
+))]
 fn worker_b_task() {
     print_current_task_stack_check("worker_b_task");
 }
 
+#[cfg(any(
+    not(feature = "task_yield_test"),
+    all(
+        feature = "task_yield_test",
+        not(feature = "two_yield_task_test"),
+        not(feature = "two_task_resume_handoff_test"),
+        not(feature = "scheduler_fault_lifecycle_test")
+    )
+))]
 fn print_current_task_stack_check(label: &str) {
     uart::write_str(label);
     uart::write_line(": running");
@@ -384,7 +402,7 @@ pub fn handle_task_return_for_debug_test() {
     uart::write_line("");
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "task_yield_test")]
 pub fn print_final_task_list() {
     uart::write_line("");
     uart::write_line("final task list:");
@@ -792,6 +810,16 @@ pub fn test_resume_dry_run() {
     }
 }
 
+#[cfg(any(
+    feature = "resume_preflight_test",
+    feature = "resume_dry_run_test",
+    feature = "resume_restore_test",
+    feature = "real_resume_restore_test",
+    feature = "real_resume_restore_jump",
+    feature = "scheduler_resume_loop_test",
+    feature = "two_task_resume_handoff_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     crate::drivers::uart::write_line("  resume PC proximity check:");
 
@@ -872,6 +900,16 @@ fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     }
 }
 
+#[cfg(any(
+    feature = "resume_preflight_test",
+    feature = "resume_dry_run_test",
+    feature = "resume_restore_test",
+    feature = "real_resume_restore_test",
+    feature = "real_resume_restore_jump",
+    feature = "scheduler_resume_loop_test",
+    feature = "two_task_resume_handoff_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 fn print_resume_frame_check(task_id: usize) -> bool {
     uart::write_line("  resume frame check:");
 
@@ -1271,8 +1309,11 @@ fn check_faulted_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("faulted", id)
 }
 
-#[allow(dead_code)]
-#[cfg(feature = "two_yield_task_test")]
+#[cfg(all(
+    feature = "two_yield_task_test",
+    not(feature = "two_task_resume_handoff_test"),
+    not(feature = "scheduler_fault_lifecycle_test")
+))]
 fn two_yielding_task() {
     crate::drivers::uart::write_line("two_yielding_task: step 1");
 
