@@ -254,6 +254,26 @@ fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DispatchDecision {
+    StartFresh(usize),
+    ResumeSaved(usize),
+    NoRunnableTask,
+    Failed,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
+    if task::is_resumable_task(task_id) {
+        DispatchDecision::ResumeSaved(task_id)
+    } else if task::is_fresh_ready_task(task_id) {
+        DispatchDecision::StartFresh(task_id)
+    } else {
+        DispatchDecision::Failed
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 pub fn dispatch_next() -> DispatchResult {
     scheduler_log_line("");
     scheduler_log_line("scheduler dispatch_next:");
@@ -271,26 +291,38 @@ pub fn dispatch_next() -> DispatchResult {
     crate::drivers::uart::write_dec_u64(task::max_tasks() as u64);
     scheduler_log_line("");
 
-    let Some(task_id) = find_next_dispatchable_task_after(current) else {
-        scheduler_log_line("  selected task: none");
-        return DispatchResult::NoRunnableTask;
+    let decision = match find_next_dispatchable_task_after(current) {
+        Some(task_id) => {
+            print_dispatch_task_summary(task_id);
+            choose_dispatch_decision(task_id)
+        }
+        None => {
+            scheduler_log_line("  selected task: none");
+            DispatchDecision::NoRunnableTask
+        }
     };
 
-    print_dispatch_task_summary(task_id);
+    match decision {
+        DispatchDecision::ResumeSaved(task_id) => {
+            scheduler_log_line("  dispatch decision: resume saved task");
+            scheduler_log_line("  dispatch action: resume task");
 
-    if task::is_resumable_task(task_id) {
-        scheduler_log_line("  dispatch action: resume task");
+            force_current_task(task_id);
 
-        force_current_task(task_id);
+            resume_selected_task_checked(task_id)
+        }
+        DispatchDecision::StartFresh(task_id) => {
+            scheduler_log_line("  dispatch decision: start fresh task");
+            scheduler_log_line("  dispatch action: start fresh task");
 
-        resume_selected_task_checked(task_id)
-    } else if task::is_fresh_ready_task(task_id) {
-        scheduler_log_line("  dispatch action: start fresh task");
-
-        start_selected_task_checked(task_id)
-    } else {
-        scheduler_log_line("  dispatch action: failed; task is not dispatchable");
-        DispatchResult::Failed
+            start_selected_task_checked(task_id)
+        }
+        DispatchDecision::NoRunnableTask => DispatchResult::NoRunnableTask,
+        DispatchDecision::Failed => {
+            scheduler_log_line("  dispatch decision: failed");
+            scheduler_log_line("  dispatch action: failed; task is not dispatchable");
+            DispatchResult::Failed
+        }
     }
 }
 
