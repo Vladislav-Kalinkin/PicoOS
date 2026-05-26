@@ -395,7 +395,7 @@ fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
     #[cfg(any(
         feature = "two_task_resume_handoff_test",
         feature = "task_fault_test",
-        feature = "real_trap_handler_classification_test"
+        feature = "scheduler_fault_lifecycle_test"
     ))]
     {
         let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) else {
@@ -703,7 +703,7 @@ fn start_selected_task_checked(task_id: usize) -> ! {
     #[cfg(any(
         feature = "two_task_resume_handoff_test",
         feature = "task_fault_test",
-        feature = "real_trap_handler_classification_test"
+        feature = "scheduler_fault_lifecycle_test"
     ))]
     {
         crate::kernel::task::debug::set_debug_current_task_id(task_id);
