@@ -32,45 +32,26 @@ pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
     let _ = create_task("idle", idle_task);
 
-    // === worker-a: выбор entry point зависит от активного feature flag ===
-    #[cfg(feature = "real_trap_handler_classification_test")]
-    let _ = create_task("worker-a", real_trap_handler_worker_a);
-
-    #[cfg(all(
-        feature = "real_trap_classification_test",
-        not(feature = "real_trap_handler_classification_test")
-    ))]
-    let _ = create_task("worker-a", real_trap_classification_worker_a);
+    #[cfg(feature = "scheduler_fault_lifecycle_test")]
+    {
+        let _ = create_task("worker-a", real_trap_handler_worker_a);
+        let _ = create_task("trap-worker", real_trap_handler_worker);
+    }
 
     #[cfg(all(
         feature = "two_yield_task_test",
-        not(feature = "real_trap_classification_test"),
-        not(feature = "real_trap_handler_classification_test")
+        not(feature = "scheduler_fault_lifecycle_test")
     ))]
     let _ = create_task("worker-a", two_yielding_task);
 
     #[cfg(not(any(
         feature = "two_yield_task_test",
-        feature = "real_trap_classification_test",
-        feature = "real_trap_handler_classification_test"
+        feature = "scheduler_fault_lifecycle_test"
     )))]
-    let _ = create_task("worker-a", yielding_task);
-
-    // === worker-b / trap-worker: выбор зависит от активного feature flag ===
-    #[cfg(feature = "real_trap_handler_classification_test")]
-    let _ = create_task("trap-worker", real_trap_handler_worker);
-
-    #[cfg(all(
-        feature = "real_trap_classification_test",
-        not(feature = "real_trap_handler_classification_test")
-    ))]
-    let _ = create_task("trap-worker", real_trap_classification_worker);
-
-    #[cfg(not(any(
-        feature = "real_trap_classification_test",
-        feature = "real_trap_handler_classification_test"
-    )))]
-    let _ = create_task("worker-b", worker_b_task);
+    {
+        let _ = create_task("worker-a", yielding_task);
+        let _ = create_task("worker-b", worker_b_task);
+    }
 
     print_tasks();
 }
@@ -261,81 +242,52 @@ pub fn test_task_yield() {
 
     set_debug_task_run_stage(10);
 
-    #[cfg(all(
-        feature = "task_yield_test",
-        feature = "real_trap_handler_classification_test",
-        not(feature = "real_trap_classification_test")
-    ))]
+    #[cfg(feature = "scheduler_fault_lifecycle_test")]
     {
-        test_real_trap_handler_classification_bootstrap();
+        test_scheduler_fault_lifecycle_bootstrap();
     }
 
     #[cfg(all(
         feature = "task_fault_test",
-        feature = "trap_to_task_fault_test",
-        feature = "real_trap_classification_test"
+        not(feature = "scheduler_fault_lifecycle_test")
     ))]
-    {
-        test_real_trap_classification_bootstrap();
-    }
-
-    #[cfg(all(
-        feature = "task_fault_test",
-        feature = "trap_to_task_fault_test",
-        not(feature = "real_trap_classification_test")
-    ))]
-    {
-        test_trap_to_task_fault_bootstrap();
-    }
-
-    #[cfg(all(feature = "task_fault_test", not(feature = "trap_to_task_fault_test")))]
     {
         test_task_fault_bootstrap();
     }
 
     #[cfg(all(
         feature = "two_task_resume_handoff_test",
-        not(feature = "task_fault_test")
+        not(feature = "task_fault_test"),
+        not(feature = "scheduler_fault_lifecycle_test")
     ))]
     {
         test_two_task_resume_handoff_bootstrap();
     }
 
-    #[cfg(not(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test")))]
+    #[cfg(not(any(
+        feature = "two_task_resume_handoff_test",
+        feature = "task_fault_test",
+        feature = "scheduler_fault_lifecycle_test"
+    )))]
     {
         uart::write_line("selected task: worker-a");
         run_task_on_own_stack(1);
     }
 }
 
-#[cfg(feature = "real_trap_classification_test")]
-fn test_real_trap_classification_bootstrap() {
-    uart::write_line("real trap classification bootstrap:");
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
+fn test_scheduler_fault_lifecycle_bootstrap() {
+    uart::write_line("scheduler fault lifecycle bootstrap:");
     uart::write_line("bootstrap action: scheduler starts first fresh task");
+
     crate::kernel::task::scheduler::set_current_task(0);
 
     match crate::kernel::task::scheduler::run() {
         crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-            uart::write_line("real trap classification bootstrap result: no runnable task");
+            uart::write_line("scheduler fault lifecycle bootstrap result: no runnable task");
         }
         crate::kernel::task::scheduler::RunResult::Failed => {
-            uart::write_line("real trap classification bootstrap result: failed");
-        }
-    }
-}
-
-#[cfg(feature = "trap_to_task_fault_test")]
-fn test_trap_to_task_fault_bootstrap() {
-    uart::write_line("trap-to-task-fault bootstrap:");
-    uart::write_line("bootstrap action: scheduler starts first fresh task");
-    crate::kernel::task::scheduler::set_current_task(0);
-
-    match crate::kernel::task::scheduler::run() {
-        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-            uart::write_line("trap-to-task-fault bootstrap result: no runnable task");
-        }
-        crate::kernel::task::scheduler::RunResult::Failed => {
-            uart::write_line("trap-to-task-fault bootstrap result: failed");
+            uart::write_line("scheduler fault lifecycle bootstrap result: failed");
         }
     }
 }
@@ -1397,10 +1349,7 @@ fn print_task_finished_cleanly_check(task_id: usize) -> bool {
     state_finished && can_resume_false && last_return_exit
 }
 
-#[cfg(any(
-    feature = "finished_task_dispatch_guard_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn check_finished_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("finished", id)
 }
@@ -1413,63 +1362,18 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.52");
+    crate::drivers::uart::write_line("  current: 0.1.53");
 
-    #[cfg(feature = "task_fault_test")]
-    {
-        crate::drivers::uart::write_line("  task fault state: OK");
-        crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
-    }
-
-    #[cfg(not(feature = "task_fault_test"))]
-    {
-        crate::drivers::uart::write_line("  task fault state: compiled");
-        crate::drivers::uart::write_line("  scheduler fault handler: compiled");
-    }
-
-    #[cfg(feature = "trap_to_task_fault_test")]
+    crate::drivers::uart::write_line("  task fault state: OK");
+    crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
     crate::drivers::uart::write_line("  trap-to-task-fault skeleton: OK");
-
-    #[cfg(feature = "real_trap_classification_test")]
     crate::drivers::uart::write_line("  real trap classification: OK");
-
-    #[cfg(feature = "real_trap_handler_classification_test")]
-    {
-        crate::drivers::uart::write_line("  real trap handler classification: OK");
-        crate::drivers::uart::write_line("  real trap handler task-fault return path: OK");
-    }
-
-    #[cfg(any(
-        feature = "trap_fault_metadata_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
+    crate::drivers::uart::write_line("  real trap handler classification: OK");
+    crate::drivers::uart::write_line("  real trap handler task-fault return path: OK");
     crate::drivers::uart::write_line("  trap fault metadata reporting: OK");
-
-    #[cfg(any(
-        feature = "task_fault_assertions_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
     crate::drivers::uart::write_line("  explicit task fault assertions: OK");
-
-    #[cfg(feature = "kernel_fault_guard_test")]
-    crate::drivers::uart::write_line("  kernel fault guard: OK");
-
-    #[cfg(any(
-        feature = "faulted_task_dispatch_guard_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
     crate::drivers::uart::write_line("  faulted task dispatch guard: OK");
-
-    #[cfg(any(
-        feature = "finished_task_dispatch_guard_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
     crate::drivers::uart::write_line("  finished task dispatch guard: OK");
-
-    #[cfg(any(
-        feature = "no_runnable_scheduler_policy_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
     crate::drivers::uart::write_line("  no-runnable scheduler policy: OK");
 
     crate::drivers::uart::write_line("  task state invariants in core: OK");
@@ -1480,11 +1384,9 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  task completion summary in core: OK");
     crate::drivers::uart::write_line("  task completion output consolidated: OK");
     crate::drivers::uart::write_line("  scheduler fault lifecycle feature: OK");
-    crate::drivers::uart::write_line("  no-runnable script migrated to lifecycle feature: OK");
-    crate::drivers::uart::write_line("  obsolete no-runnable script removed: OK");
-    crate::drivers::uart::write_line("  no-runnable policy cfg migrated to lifecycle feature: OK");
-    crate::drivers::uart::write_line("  dispatch guard cfgs migrated to lifecycle feature: OK");
-    crate::drivers::uart::write_line("  fault metadata cfgs migrated to lifecycle feature: OK");
+    crate::drivers::uart::write_line(
+        "  trap classification cfgs migrated to lifecycle feature: OK",
+    );
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1498,10 +1400,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  scheduler first task dispatch: OK");
 }
 
-#[cfg(any(
-    feature = "faulted_task_dispatch_guard_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn check_faulted_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("faulted", id)
 }
@@ -1537,11 +1436,7 @@ fn print_resume_candidate_header() {
     }
 }
 
-#[cfg(any(
-    feature = "faulted_task_dispatch_guard_test",
-    feature = "finished_task_dispatch_guard_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn print_terminal_task_dispatch_guard(label: &str, id: usize) -> bool {
     let snapshot = crate::kernel::task::table::get_terminal_task_dispatch_invariants(id);
 
@@ -1798,16 +1693,6 @@ fn test_task_fault_bootstrap() {
 }
 
 #[cfg(feature = "task_fault_test")]
-fn fault_test_worker_a() {
-    crate::drivers::uart::write_line("fault_test_worker_a: step 1");
-    crate::kernel::task::yield_now();
-
-    crate::drivers::uart::write_line("fault_test_worker_a: resumed after yield");
-    crate::drivers::uart::write_line("fault_test_worker_a: step 2");
-    crate::kernel::task::task_exit();
-}
-
-#[cfg(feature = "task_fault_test")]
 fn task_fault_completion_check() -> bool {
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("task fault completion check:");
@@ -1816,57 +1701,27 @@ fn task_fault_completion_check() -> bool {
 
     print_task_fault_completion_snapshot(completion_snapshot);
 
-    #[cfg(any(
-        feature = "real_trap_handler_classification_test",
-        feature = "trap_fault_metadata_test",
-        feature = "task_fault_assertions_test",
-        feature = "faulted_task_dispatch_guard_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
+    #[cfg(feature = "scheduler_fault_lifecycle_test")]
     {
         if let Some(id) = find_faulted_task_for_completion_check() {
             crate::kernel::task::table::print_task_fault_info_by_id(id);
 
-            #[cfg(any(
-                feature = "task_fault_assertions_test",
-                feature = "scheduler_fault_lifecycle_test"
-            ))]
-            {
-                let fault_metadata_assertions_ok = check_task_fault_metadata_assertions(id);
+            let fault_metadata_assertions_ok = check_task_fault_metadata_assertions(id);
 
-                if !fault_metadata_assertions_ok {
-                    return false;
-                }
+            if !fault_metadata_assertions_ok {
+                return false;
             }
 
-            #[cfg(any(
-                feature = "faulted_task_dispatch_guard_test",
-                feature = "scheduler_fault_lifecycle_test"
-            ))]
-            {
-                let faulted_task_dispatch_guard_ok = check_faulted_task_dispatch_guard(id);
+            let faulted_task_dispatch_guard_ok = check_faulted_task_dispatch_guard(id);
 
-                if !faulted_task_dispatch_guard_ok {
-                    return false;
-                }
+            if !faulted_task_dispatch_guard_ok {
+                return false;
             }
         } else {
             crate::drivers::uart::write_line("  fault info: faulted task not found");
-
-            #[cfg(any(
-                feature = "task_fault_assertions_test",
-                feature = "faulted_task_dispatch_guard_test",
-                feature = "scheduler_fault_lifecycle_test"
-            ))]
             return false;
         }
-    }
 
-    #[cfg(any(
-        feature = "finished_task_dispatch_guard_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
-    {
         if let Some(id) = find_finished_task_for_completion_check() {
             let finished_task_dispatch_guard_ok = check_finished_task_dispatch_guard(id);
 
@@ -1879,13 +1734,7 @@ fn task_fault_completion_check() -> bool {
             );
             return false;
         }
-    }
 
-    #[cfg(any(
-        feature = "no_runnable_scheduler_policy_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
-    {
         let no_runnable_scheduler_policy_ok = check_no_runnable_scheduler_policy();
 
         if !no_runnable_scheduler_policy_ok {
@@ -1934,18 +1783,12 @@ fn print_task_fault_completion_snapshot(
     crate::drivers::uart::write_line("");
 }
 
-#[cfg(any(
-    feature = "finished_task_dispatch_guard_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn find_finished_task_for_completion_check() -> Option<usize> {
     crate::kernel::task::table::find_first_finished_task()
 }
 
-#[cfg(any(
-    feature = "no_runnable_scheduler_policy_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn check_no_runnable_scheduler_policy() -> bool {
     let snapshot = crate::kernel::task::scheduler::get_no_runnable_scheduler_snapshot();
 
@@ -1973,21 +1816,12 @@ fn check_no_runnable_scheduler_policy() -> bool {
     snapshot.result
 }
 
-#[cfg(any(
-    feature = "real_trap_handler_classification_test",
-    feature = "trap_fault_metadata_test",
-    feature = "task_fault_assertions_test",
-    feature = "faulted_task_dispatch_guard_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn find_faulted_task_for_completion_check() -> Option<usize> {
     crate::kernel::task::table::find_first_faulted_task()
 }
 
-#[cfg(any(
-    feature = "task_fault_assertions_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn check_task_fault_metadata_assertions(id: usize) -> bool {
     let snapshot = crate::kernel::task::table::get_breakpoint_fault_metadata_assertions(id);
 
@@ -2019,41 +1853,7 @@ fn check_task_fault_metadata_assertions(id: usize) -> bool {
     snapshot.result
 }
 
-#[cfg(feature = "trap_to_task_fault_test")]
-fn trap_fault_worker() {
-    crate::drivers::uart::write_line("trap_fault_worker: step 1");
-    crate::drivers::uart::write_line("trap_fault_worker: simulated instruction access fault");
-    crate::kernel::task::simulated_task_trap_fault();
-}
-
-#[cfg(feature = "trap_to_task_fault_test")]
-fn trap_fault_test_worker_a() {
-    crate::drivers::uart::write_line("trap_fault_test_worker_a: step 1");
-    crate::kernel::task::yield_now();
-    crate::drivers::uart::write_line("trap_fault_test_worker_a: resumed after yield");
-    crate::drivers::uart::write_line("trap_fault_test_worker_a: step 2");
-    crate::kernel::task::task_exit();
-}
-
-#[cfg(feature = "real_trap_classification_test")]
-fn real_trap_classification_worker() {
-    crate::drivers::uart::write_line("real_trap_classification_worker: step 1");
-    crate::drivers::uart::write_line(
-        "real_trap_classification_worker: simulated real instruction access fault",
-    );
-    crate::kernel::task::simulated_real_trap_fault();
-}
-
-#[cfg(feature = "real_trap_classification_test")]
-fn real_trap_classification_worker_a() {
-    crate::drivers::uart::write_line("real_trap_classification_worker_a: step 1");
-    crate::kernel::task::yield_now();
-    crate::drivers::uart::write_line("real_trap_classification_worker_a: resumed after yield");
-    crate::drivers::uart::write_line("real_trap_classification_worker_a: step 2");
-    crate::kernel::task::task_exit();
-}
-
-#[cfg(feature = "real_trap_handler_classification_test")]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn real_trap_handler_worker() {
     crate::drivers::uart::write_line("real_trap_handler_worker: step 1");
     crate::drivers::uart::write_line("real_trap_handler_worker: triggering ebreak");
@@ -2062,20 +1862,21 @@ fn real_trap_handler_worker() {
         core::arch::asm!("ebreak", options(nomem, nostack, preserves_flags));
     }
 
-    // Эта строка не должна выполниться
     crate::drivers::uart::write_line("real_trap_handler_worker: after ebreak (should not reach)");
 }
 
-#[cfg(feature = "real_trap_handler_classification_test")]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn real_trap_handler_worker_a() {
     crate::drivers::uart::write_line("real_trap_handler_worker_a: step 1");
     crate::kernel::task::yield_now();
+
     crate::drivers::uart::write_line("real_trap_handler_worker_a: resumed after yield");
     crate::drivers::uart::write_line("real_trap_handler_worker_a: step 2");
+
     crate::kernel::task::task_exit();
 }
 
-#[cfg(feature = "real_trap_handler_classification_test")]
+#[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn test_real_trap_handler_classification_bootstrap() {
     uart::write_line("real trap handler classification bootstrap:");
     uart::write_line("bootstrap action: scheduler starts first fresh task");

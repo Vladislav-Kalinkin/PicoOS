@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.52"
+version = "0.1.53"
 edition = "2021"
 
 [[bin]]
@@ -91,9 +91,6 @@ task_resume_selftest = [
 scheduler_fault_lifecycle_test = [
   "task_yield_test",
   "task_fault_test",
-  "trap_to_task_fault_test",
-  "real_trap_classification_test",
-  "real_trap_handler_classification_test",
   "scheduler_reentry_test",
   "scheduler_dispatch_test",
   "scheduler_run_test",

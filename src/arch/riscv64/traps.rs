@@ -20,6 +20,9 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
         return;
     }
 
+    let mepc = cpu::mepc();
+    let mtval = cpu::mtval();
+
     uart::write_line("");
     uart::write_line("=== RISC-V TRAP ===");
 
@@ -32,19 +35,16 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
     uart::write_line("");
 
     uart::write_str("mepc: ");
-    uart::write_hex_u64(cpu::mepc());
+    uart::write_hex_u64(mepc);
     uart::write_line("");
 
     uart::write_str("mtval: ");
-    uart::write_hex_u64(cpu::mtval());
+    uart::write_hex_u64(mtval);
     uart::write_line("");
 
     print_trap_cause(cause);
 
-    #[cfg(any(
-        feature = "real_trap_handler_classification_test",
-        feature = "kernel_fault_guard_test"
-    ))]
+    #[cfg(feature = "scheduler_fault_lifecycle_test")]
     {
         crate::kernel::task::debug::print_trap_execution_context();
         crate::kernel::task::fault::print_current_trap_fault_classification();
@@ -77,10 +77,9 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
                 let task_id = crate::kernel::task::debug::debug_current_task_id();
 
-                // === НОВОЕ: читаем регистры CPU и сохраняем причину fault ===
-                let fault_mcause = cause; // `cause` уже прочитан в начале trap handler
-                let fault_mepc = cpu::mepc();
-                let fault_mtval = cpu::mtval();
+                let fault_mcause = cause;
+                let fault_mepc = mepc;
+                let fault_mtval = mtval;
                 let fault_reason =
                     crate::kernel::task::table::TaskFaultReason::from_mcause(fault_mcause);
 
@@ -92,7 +91,6 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                     fault_mtval,
                 );
 
-                // Печатаем детали fault
                 uart::write_str("  fault reason: ");
                 crate::kernel::task::table::print_task_fault_reason(fault_reason);
                 uart::write_line("");
@@ -109,12 +107,6 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                 uart::write_hex_u64(fault_mtval);
                 uart::write_line("");
 
-                // Do not return from the trap handler with mret here.
-                //
-                // Returning with mret would resume the same faulting instruction
-                // (for this test: ebreak), causing an immediate repeated trap.
-                // Instead, convert this real trap into the same task-return path
-                // used by cooperative task_fault()/simulated trap tests.
                 let task_sp = frame as u64;
                 let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
                 let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
@@ -145,10 +137,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
         }
     }
 
-    #[cfg(not(any(
-        feature = "real_trap_handler_classification_test",
-        feature = "kernel_fault_guard_test"
-    )))]
+    #[cfg(not(feature = "scheduler_fault_lifecycle_test"))]
     {
         uart::write_line("system halted after trap");
         arch::halt();
