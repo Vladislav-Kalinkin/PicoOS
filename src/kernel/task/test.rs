@@ -1410,7 +1410,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.42");
+    crate::drivers::uart::write_line("  current: 0.1.43");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1458,6 +1458,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  task state lookup in core: OK");
     crate::drivers::uart::write_line("  terminal task dispatch invariants in core: OK");
     crate::drivers::uart::write_line("  no-runnable scheduler snapshot in core: OK");
+    crate::drivers::uart::write_line("  fault metadata assertions in core: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1956,52 +1957,34 @@ fn find_faulted_task_for_completion_check() -> Option<usize> {
 
 #[cfg(feature = "task_fault_assertions_test")]
 fn check_task_fault_metadata_assertions(id: usize) -> bool {
-    let reason_ok = matches!(
-        crate::kernel::task::table::get_task_fault_reason(id),
-        Some(crate::kernel::task::table::TaskFaultReason::Breakpoint)
-    );
-
-    let mcause_ok = matches!(
-        crate::kernel::task::table::get_task_fault_mcause(id),
-        Some(3)
-    );
-
-    let mepc_ok = crate::kernel::task::table::get_task_fault_mepc(id)
-        .map(|value| value != 0)
-        .unwrap_or(false);
-
-    let mtval_ok = crate::kernel::task::table::get_task_fault_mtval(id)
-        .map(|value| value != 0)
-        .unwrap_or(false);
+    let snapshot = crate::kernel::task::table::get_breakpoint_fault_metadata_assertions(id);
 
     crate::drivers::uart::write_line("  fault metadata assertions:");
 
     crate::drivers::uart::write_str("    reason == breakpoint: ");
-    crate::kernel::task::table::print_yes_no(reason_ok);
+    crate::kernel::task::table::print_yes_no(snapshot.reason_breakpoint);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("    mcause == 3: ");
-    crate::kernel::task::table::print_yes_no(mcause_ok);
+    crate::kernel::task::table::print_yes_no(snapshot.mcause_breakpoint);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("    mepc != 0: ");
-    crate::kernel::task::table::print_yes_no(mepc_ok);
+    crate::kernel::task::table::print_yes_no(snapshot.mepc_nonzero);
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_str("    mtval != 0: ");
-    crate::kernel::task::table::print_yes_no(mtval_ok);
+    crate::kernel::task::table::print_yes_no(snapshot.mtval_nonzero);
     crate::drivers::uart::write_line("");
 
-    let result = reason_ok && mcause_ok && mepc_ok && mtval_ok;
-
     crate::drivers::uart::write_str("    result: ");
-    if result {
+    if snapshot.result {
         crate::drivers::uart::write_line("OK");
     } else {
         crate::drivers::uart::write_line("FAILED");
     }
 
-    result
+    snapshot.result
 }
 
 #[cfg(feature = "trap_to_task_fault_test")]

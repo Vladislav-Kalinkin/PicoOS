@@ -1213,3 +1213,40 @@ pub fn get_terminal_task_dispatch_invariants(id: usize) -> TerminalTaskDispatchI
 pub fn validate_terminal_task_dispatch_invariants(id: usize) -> bool {
     get_terminal_task_dispatch_invariants(id).result
 }
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+pub struct BreakpointFaultMetadataAssertionSnapshot {
+    pub reason_breakpoint: bool,
+    pub mcause_breakpoint: bool,
+    pub mepc_nonzero: bool,
+    pub mtval_nonzero: bool,
+    pub result: bool,
+}
+
+#[allow(dead_code)]
+pub fn get_breakpoint_fault_metadata_assertions(
+    id: usize,
+) -> BreakpointFaultMetadataAssertionSnapshot {
+    let reason_breakpoint = matches!(get_task_fault_reason(id), Some(TaskFaultReason::Breakpoint));
+
+    let mcause_breakpoint = matches!(get_task_fault_mcause(id), Some(3));
+
+    let mepc_nonzero = get_task_fault_mepc(id)
+        .map(|value| value != 0)
+        .unwrap_or(false);
+
+    let mtval_nonzero = get_task_fault_mtval(id)
+        .map(|value| value != 0)
+        .unwrap_or(false);
+
+    let result = reason_breakpoint && mcause_breakpoint && mepc_nonzero && mtval_nonzero;
+
+    BreakpointFaultMetadataAssertionSnapshot {
+        reason_breakpoint,
+        mcause_breakpoint,
+        mepc_nonzero,
+        mtval_nonzero,
+        result,
+    }
+}
