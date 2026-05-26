@@ -45,10 +45,6 @@ scheduler_run_once_selftest = [
   "scheduler_dispatch_test",
 ]
 
-scheduler_dispatch_selftest = [
-  "scheduler_run_once_selftest",
-]
-
 scheduler_run_selftest = [
   "scheduler_run_once_selftest",
   "scheduler_run_test",

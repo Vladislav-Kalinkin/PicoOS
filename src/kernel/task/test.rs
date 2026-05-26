@@ -39,13 +39,26 @@ pub fn test_tasks_with_yield_worker() {
     }
 
     #[cfg(all(
-        feature = "two_yield_task_test",
+        feature = "two_task_resume_handoff_test",
         not(feature = "scheduler_fault_lifecycle_test")
     ))]
-    let _ = create_task("worker-a", two_yielding_task);
+    {
+        let _ = create_task("worker-a", handoff_worker_a);
+        let _ = create_task("worker-b", handoff_worker_b);
+    }
+
+    #[cfg(all(
+        feature = "two_yield_task_test",
+        not(feature = "two_task_resume_handoff_test"),
+        not(feature = "scheduler_fault_lifecycle_test")
+    ))]
+    {
+        let _ = create_task("worker-a", two_yielding_task);
+    }
 
     #[cfg(not(any(
         feature = "two_yield_task_test",
+        feature = "two_task_resume_handoff_test",
         feature = "scheduler_fault_lifecycle_test"
     )))]
     {
@@ -853,7 +866,12 @@ fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     crate::drivers::uart::write_hex_u64(context.resume_pc);
     crate::drivers::uart::write_line("");
 
-    #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
+    #[cfg(any(
+        feature = "two_task_resume_handoff_test",
+        feature = "task_fault_test",
+        feature = "scheduler_resume_loop_test",
+        feature = "real_resume_restore_jump"
+    ))]
     {
         let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(context.resume_pc);
 
@@ -870,10 +888,15 @@ fn print_resume_pc_proximity_check(task_id: usize) -> bool {
             crate::drivers::uart::write_line("FAILED");
         }
 
-        return resume_pc_inside_text;
+        resume_pc_inside_text
     }
 
-    #[cfg(not(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test")))]
+    #[cfg(not(any(
+        feature = "two_task_resume_handoff_test",
+        feature = "task_fault_test",
+        feature = "scheduler_resume_loop_test",
+        feature = "real_resume_restore_jump"
+    )))]
     {
         if context.resume_pc < entry_addr {
             crate::drivers::uart::write_line("    delta: below entry");
