@@ -1265,43 +1265,55 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.62");
+    crate::drivers::uart::write_line("  current: 0.1.63");
 
-    crate::drivers::uart::write_line("  obsolete standalone task tests removed: OK");
-    crate::drivers::uart::write_line("  obsolete standalone scheduler scripts removed: OK");
-    crate::drivers::uart::write_line("  task fault state: OK");
-    crate::drivers::uart::write_line("  scheduler skips faulted tasks: OK");
-    crate::drivers::uart::write_line("  trap-to-task-fault skeleton: OK");
-    crate::drivers::uart::write_line("  real trap classification: OK");
-    crate::drivers::uart::write_line("  real trap handler classification: OK");
-    crate::drivers::uart::write_line("  real trap handler task-fault return path: OK");
-    crate::drivers::uart::write_line("  trap fault metadata reporting: OK");
-    crate::drivers::uart::write_line("  explicit task fault assertions: OK");
-    crate::drivers::uart::write_line("  faulted task dispatch guard: OK");
-    crate::drivers::uart::write_line("  finished task dispatch guard: OK");
-    crate::drivers::uart::write_line("  no-runnable scheduler policy: OK");
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  cleanup:");
+    crate::drivers::uart::write_line("    obsolete standalone task tests removed: OK");
+    crate::drivers::uart::write_line("    obsolete standalone scheduler scripts removed: OK");
+    crate::drivers::uart::write_line("    obsolete resume task script removed: OK");
+    crate::drivers::uart::write_line("    obsolete resume PC proximity requirement removed: OK");
 
-    crate::drivers::uart::write_line("  task state invariants in core: OK");
-    crate::drivers::uart::write_line("  task state lookup in core: OK");
-    crate::drivers::uart::write_line("  terminal task dispatch invariants in core: OK");
-    crate::drivers::uart::write_line("  no-runnable scheduler snapshot in core: OK");
-    crate::drivers::uart::write_line("  fault metadata assertions in core: OK");
-    crate::drivers::uart::write_line("  task completion summary in core: OK");
-    crate::drivers::uart::write_line("  task completion output consolidated: OK");
-    crate::drivers::uart::write_line("  scheduler fault lifecycle feature: OK");
-    crate::drivers::uart::write_line("  obsolete resume task script removed: OK");
-    crate::drivers::uart::write_line("  obsolete resume PC proximity requirement removed: OK");
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  task/resume:");
+    crate::drivers::uart::write_line("    RISC-V-only baseline: OK");
+    crate::drivers::uart::write_line("    cooperative task resume: OK");
+    crate::drivers::uart::write_line("    repeated yield/resume loop: OK");
+    crate::drivers::uart::write_line("    scheduler-oriented resume loop: OK");
+    crate::drivers::uart::write_line("    RISC-V yield boundary: OK");
+    crate::drivers::uart::write_line("    two-task cooperative handoff: OK");
 
-    crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
-    crate::drivers::uart::write_line("  cooperative task resume: OK");
-    crate::drivers::uart::write_line("  repeated yield/resume loop: OK");
-    crate::drivers::uart::write_line("  scheduler-oriented resume loop: OK");
-    crate::drivers::uart::write_line("  RISC-V yield boundary: OK");
-    crate::drivers::uart::write_line("  two-task cooperative handoff: OK");
-    crate::drivers::uart::write_line("  scheduler round-robin fairness: OK");
-    crate::drivers::uart::write_line("  scheduler task capacity from table: OK");
-    crate::drivers::uart::write_line("  scheduler fresh task dispatch: OK");
-    crate::drivers::uart::write_line("  scheduler first task dispatch: OK");
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  scheduler:");
+    crate::drivers::uart::write_line("    scheduler first task dispatch: OK");
+    crate::drivers::uart::write_line("    scheduler fresh task dispatch: OK");
+    crate::drivers::uart::write_line("    scheduler round-robin fairness: OK");
+    crate::drivers::uart::write_line("    scheduler task capacity from table: OK");
+    crate::drivers::uart::write_line("    scheduler skips faulted tasks: OK");
+    crate::drivers::uart::write_line("    no-runnable scheduler policy: OK");
+
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  task lifecycle:");
+    crate::drivers::uart::write_line("    task state invariants in core: OK");
+    crate::drivers::uart::write_line("    task state lookup in core: OK");
+    crate::drivers::uart::write_line("    terminal task dispatch invariants in core: OK");
+    crate::drivers::uart::write_line("    no-runnable scheduler snapshot in core: OK");
+    crate::drivers::uart::write_line("    task completion summary in core: OK");
+    crate::drivers::uart::write_line("    task completion output consolidated: OK");
+
+    crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_line("  fault lifecycle:");
+    crate::drivers::uart::write_line("    task fault state: OK");
+    crate::drivers::uart::write_line("    trap-to-task-fault skeleton: OK");
+    crate::drivers::uart::write_line("    real trap classification: OK");
+    crate::drivers::uart::write_line("    real trap handler classification: OK");
+    crate::drivers::uart::write_line("    real trap handler task-fault return path: OK");
+    crate::drivers::uart::write_line("    trap fault metadata reporting: OK");
+    crate::drivers::uart::write_line("    fault metadata assertions in core: OK");
+    crate::drivers::uart::write_line("    explicit task fault assertions: OK");
+    crate::drivers::uart::write_line("    faulted task dispatch guard: OK");
+    crate::drivers::uart::write_line("    finished task dispatch guard: OK");
+    crate::drivers::uart::write_line("    scheduler fault lifecycle feature: OK");
 }
 
 #[cfg(feature = "scheduler_fault_lifecycle_test")]
