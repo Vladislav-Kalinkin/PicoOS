@@ -1413,7 +1413,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.50");
+    crate::drivers::uart::write_line("  current: 0.1.52");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1439,10 +1439,16 @@ fn print_riscv_cooperative_resume_milestone() {
         crate::drivers::uart::write_line("  real trap handler task-fault return path: OK");
     }
 
-    #[cfg(feature = "trap_fault_metadata_test")]
+    #[cfg(any(
+        feature = "trap_fault_metadata_test",
+        feature = "scheduler_fault_lifecycle_test"
+    ))]
     crate::drivers::uart::write_line("  trap fault metadata reporting: OK");
 
-    #[cfg(feature = "task_fault_assertions_test")]
+    #[cfg(any(
+        feature = "task_fault_assertions_test",
+        feature = "scheduler_fault_lifecycle_test"
+    ))]
     crate::drivers::uart::write_line("  explicit task fault assertions: OK");
 
     #[cfg(feature = "kernel_fault_guard_test")]
@@ -1478,6 +1484,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  obsolete no-runnable script removed: OK");
     crate::drivers::uart::write_line("  no-runnable policy cfg migrated to lifecycle feature: OK");
     crate::drivers::uart::write_line("  dispatch guard cfgs migrated to lifecycle feature: OK");
+    crate::drivers::uart::write_line("  fault metadata cfgs migrated to lifecycle feature: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1820,7 +1827,10 @@ fn task_fault_completion_check() -> bool {
         if let Some(id) = find_faulted_task_for_completion_check() {
             crate::kernel::task::table::print_task_fault_info_by_id(id);
 
-            #[cfg(feature = "task_fault_assertions_test")]
+            #[cfg(any(
+                feature = "task_fault_assertions_test",
+                feature = "scheduler_fault_lifecycle_test"
+            ))]
             {
                 let fault_metadata_assertions_ok = check_task_fault_metadata_assertions(id);
 
@@ -1974,7 +1984,10 @@ fn find_faulted_task_for_completion_check() -> Option<usize> {
     crate::kernel::task::table::find_first_faulted_task()
 }
 
-#[cfg(feature = "task_fault_assertions_test")]
+#[cfg(any(
+    feature = "task_fault_assertions_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 fn check_task_fault_metadata_assertions(id: usize) -> bool {
     let snapshot = crate::kernel::task::table::get_breakpoint_fault_metadata_assertions(id);
 
