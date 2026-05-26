@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.48"
+version = "0.1.49"
 edition = "2021"
 
 [[bin]]
@@ -98,7 +98,6 @@ scheduler_fault_lifecycle_test = [
   "task_fault_assertions_test",
   "faulted_task_dispatch_guard_test",
   "finished_task_dispatch_guard_test",
-  "no_runnable_scheduler_policy_test",
   "scheduler_reentry_test",
   "scheduler_dispatch_test",
   "scheduler_run_test",

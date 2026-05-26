@@ -1410,7 +1410,7 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
-    crate::drivers::uart::write_line("  current: 0.1.48");
+    crate::drivers::uart::write_line("  current: 0.1.49");
 
     #[cfg(feature = "task_fault_test")]
     {
@@ -1464,6 +1464,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("  scheduler fault lifecycle feature: OK");
     crate::drivers::uart::write_line("  no-runnable script migrated to lifecycle feature: OK");
     crate::drivers::uart::write_line("  obsolete no-runnable script removed: OK");
+    crate::drivers::uart::write_line("  no-runnable policy cfg migrated to lifecycle feature: OK");
 
     crate::drivers::uart::write_line("  RISC-V-only baseline: OK");
     crate::drivers::uart::write_line("  cooperative task resume: OK");
@@ -1897,7 +1898,10 @@ fn find_finished_task_for_completion_check() -> Option<usize> {
     crate::kernel::task::table::find_first_finished_task()
 }
 
-#[cfg(feature = "no_runnable_scheduler_policy_test")]
+#[cfg(any(
+    feature = "no_runnable_scheduler_policy_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 fn check_no_runnable_scheduler_policy() -> bool {
     let snapshot = crate::kernel::task::scheduler::get_no_runnable_scheduler_snapshot();
 
