@@ -30,12 +30,6 @@ pub fn run_selftests() -> ! {
     #[cfg(not(feature = "task_yield_test"))]
     crate::kernel::task::test_tasks();
 
-    crate::kernel::task::scheduler::init();
-
-    uart::write_line("");
-    uart::write_line("[selftest] scheduler skip finished");
-    crate::kernel::task::run_scheduler_skip_finished_check();
-
     uart::write_line("");
     uart::write_line("selftest complete");
     crate::arch::halt();

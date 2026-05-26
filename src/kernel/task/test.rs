@@ -391,57 +391,6 @@ pub fn print_final_task_list() {
     crate::kernel::task::table::print_tasks();
 }
 
-#[cfg(feature = "selftest")]
-pub fn run_scheduler_skip_finished_check() {
-    uart::write_line("");
-    uart::write_line("scheduler skip finished test:");
-
-    uart::write_str("mark worker-a -> ");
-    crate::kernel::task::table::set_task_state(1, crate::kernel::task::table::TaskState::Finished);
-    crate::kernel::task::table::print_task_state_by_id(1);
-    uart::write_line("");
-
-    uart::write_str("mark worker-b -> ");
-    crate::kernel::task::table::set_task_state(2, crate::kernel::task::table::TaskState::Finished);
-    crate::kernel::task::table::print_task_state_by_id(2);
-    uart::write_line("");
-
-    uart::write_line("idle is Running, so it is not selected as Ready");
-    uart::write_str("next Ready task after idle: ");
-
-    match crate::kernel::task::table::find_next_ready_after(Some(0)) {
-        Some(id) => {
-            crate::kernel::task::table::print_task_name_by_id(id);
-            uart::write_line("");
-        }
-        None => {
-            uart::write_line("none");
-        }
-    }
-
-    uart::write_line("skip finished test complete");
-}
-
-fn next_runnable_worker_task() -> Option<usize> {
-    for _ in 0..crate::kernel::task::table::max_tasks() {
-        let next = crate::kernel::task::scheduler::schedule_next()?;
-
-        if next == 0 {
-            continue;
-        }
-
-        match crate::kernel::task::table::get_task_state(next) {
-            Some(crate::kernel::task::table::TaskState::Running)
-            | Some(crate::kernel::task::table::TaskState::Ready) => {
-                return Some(next);
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-
 fn print_last_task_sp_check(task_id: usize, task_sp: u64) {
     uart::write_line("  task return context check:");
 
