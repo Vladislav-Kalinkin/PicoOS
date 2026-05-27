@@ -263,6 +263,17 @@ enum DispatchDecision {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+impl DispatchDecision {
+    fn task_id(self) -> Option<usize> {
+        match self {
+            DispatchDecision::StartFresh { task_id }
+            | DispatchDecision::ResumeSaved { task_id } => Some(task_id),
+            DispatchDecision::NoRunnableTask | DispatchDecision::Failed => None,
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
     if task::is_resumable_task(task_id) {
         DispatchDecision::ResumeSaved { task_id }
@@ -316,23 +327,25 @@ fn print_dispatch_decision(decision: DispatchDecision) {
     scheduler_log_str("  dispatch decision: ");
 
     match decision {
-        DispatchDecision::StartFresh { task_id } => {
-            scheduler_log_str("StartFresh(");
-            crate::drivers::uart::write_dec_u64(task_id as u64);
-            scheduler_log_line(")");
-        }
-        DispatchDecision::ResumeSaved { task_id } => {
-            scheduler_log_str("ResumeSaved(");
-            crate::drivers::uart::write_dec_u64(task_id as u64);
-            scheduler_log_line(")");
-        }
+        DispatchDecision::StartFresh { .. } => scheduler_log_str("StartFresh"),
+        DispatchDecision::ResumeSaved { .. } => scheduler_log_str("ResumeSaved"),
         DispatchDecision::NoRunnableTask => {
             scheduler_log_line("NoRunnableTask");
+            return;
         }
         DispatchDecision::Failed => {
             scheduler_log_line("Failed");
+            return;
         }
     }
+
+    scheduler_log_str("(");
+
+    if let Some(task_id) = decision.task_id() {
+        crate::drivers::uart::write_dec_u64(task_id as u64);
+    }
+
+    scheduler_log_line(")");
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
