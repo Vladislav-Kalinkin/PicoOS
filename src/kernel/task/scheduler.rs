@@ -287,6 +287,13 @@ enum DispatchCandidate {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DispatchCandidateKind {
+    Task,
+    None,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecision {
     fn kind(self) -> DispatchDecisionKind {
         match self {
@@ -348,10 +355,27 @@ impl DispatchDecisionOutcome {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchCandidate {
+    fn kind(self) -> DispatchCandidateKind {
+        match self {
+            DispatchCandidate::Task { .. } => DispatchCandidateKind::Task,
+            DispatchCandidate::None => DispatchCandidateKind::None,
+        }
+    }
+
     fn task_id(self) -> Option<usize> {
         match self {
             DispatchCandidate::Task { task_id } => Some(task_id),
             DispatchCandidate::None => None,
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+impl DispatchCandidateKind {
+    fn label(self) -> &'static str {
+        match self {
+            DispatchCandidateKind::Task => "Task",
+            DispatchCandidateKind::None => "None",
         }
     }
 }
@@ -368,8 +392,24 @@ fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+fn print_dispatch_candidate(candidate: DispatchCandidate) {
+    scheduler_log_str("  dispatch candidate: ");
+    scheduler_log_str(candidate.kind().label());
+
+    if let Some(task_id) = candidate.task_id() {
+        scheduler_log_str("(");
+        crate::drivers::uart::write_dec_u64(task_id as u64);
+        scheduler_log_str(")");
+    }
+
+    scheduler_log_line("");
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
     let candidate = select_dispatch_candidate_after(current);
+
+    print_dispatch_candidate(candidate);
 
     match candidate.task_id() {
         Some(task_id) => {
