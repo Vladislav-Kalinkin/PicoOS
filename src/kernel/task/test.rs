@@ -1293,6 +1293,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("    no-runnable scheduler policy: OK");
     crate::drivers::uart::write_line("    scheduler dispatch candidate selection: OK");
     crate::drivers::uart::write_line("    scheduler dispatch candidate model: OK");
+    crate::drivers::uart::write_line("    scheduler dispatch candidate-to-decision conversion: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision model: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision kind: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision outcome: OK");
