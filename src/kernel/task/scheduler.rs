@@ -366,13 +366,7 @@ fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
-    print_dispatch_decision(decision);
-
-    scheduler_log_str("  dispatchable decision: ");
-    task::print_yes_no(decision.is_dispatchable());
-    scheduler_log_line("");
-    scheduler_log_str("  dispatch outcome: ");
-    scheduler_log_line(decision.outcome().label());
+    print_dispatch_decision_model(decision);
 
     match decision {
         DispatchDecision::ResumeSaved { task_id } => {
@@ -393,6 +387,18 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
             DispatchResult::Failed
         }
     }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn print_dispatch_decision_model(decision: DispatchDecision) {
+    print_dispatch_decision(decision);
+
+    scheduler_log_str("  dispatchable decision: ");
+    task::print_yes_no(decision.is_dispatchable());
+    scheduler_log_line("");
+
+    scheduler_log_str("  dispatch outcome: ");
+    scheduler_log_line(decision.outcome().label());
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
