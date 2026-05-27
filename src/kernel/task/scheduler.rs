@@ -371,7 +371,7 @@ impl DispatchCandidate {
 
     fn decision(self) -> DispatchDecision {
         match self.task_id() {
-            Some(task_id) => choose_dispatch_decision(task_id),
+            Some(task_id) => build_dispatch_decision_for_task(task_id),
             None => DispatchDecision::NoRunnableTask,
         }
     }
@@ -388,7 +388,7 @@ impl DispatchCandidateKind {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
-fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
+fn build_dispatch_decision_for_task(task_id: usize) -> DispatchDecision {
     if task::is_resumable_task(task_id) {
         DispatchDecision::ResumeSaved { task_id }
     } else if task::is_fresh_ready_task(task_id) {
