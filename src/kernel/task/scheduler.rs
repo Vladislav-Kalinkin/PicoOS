@@ -464,6 +464,13 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+fn run_dispatch_pipeline_after(current: Option<usize>) -> DispatchResult {
+    let decision = select_dispatch_decision_after(current);
+
+    execute_dispatch_decision(decision)
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 fn print_dispatch_decision_model(decision: DispatchDecision) {
     print_dispatch_decision(decision);
 
@@ -518,9 +525,7 @@ pub fn dispatch_next() -> DispatchResult {
     crate::drivers::uart::write_dec_u64(task::max_tasks() as u64);
     scheduler_log_line("");
 
-    let decision = select_dispatch_decision_after(current);
-
-    execute_dispatch_decision(decision)
+    run_dispatch_pipeline_after(current)
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
