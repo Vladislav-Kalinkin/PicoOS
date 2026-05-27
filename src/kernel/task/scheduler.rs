@@ -263,7 +263,25 @@ enum DispatchDecision {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DispatchDecisionKind {
+    StartFresh,
+    ResumeSaved,
+    NoRunnableTask,
+    Failed,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecision {
+    fn kind(self) -> DispatchDecisionKind {
+        match self {
+            DispatchDecision::StartFresh { .. } => DispatchDecisionKind::StartFresh,
+            DispatchDecision::ResumeSaved { .. } => DispatchDecisionKind::ResumeSaved,
+            DispatchDecision::NoRunnableTask => DispatchDecisionKind::NoRunnableTask,
+            DispatchDecision::Failed => DispatchDecisionKind::Failed,
+        }
+    }
+
     fn task_id(self) -> Option<usize> {
         match self {
             DispatchDecision::StartFresh { task_id }
@@ -338,26 +356,25 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
 fn print_dispatch_decision(decision: DispatchDecision) {
     scheduler_log_str("  dispatch decision: ");
 
-    match decision {
-        DispatchDecision::StartFresh { .. } => scheduler_log_str("StartFresh"),
-        DispatchDecision::ResumeSaved { .. } => scheduler_log_str("ResumeSaved"),
-        DispatchDecision::NoRunnableTask => {
-            scheduler_log_line("NoRunnableTask");
-            return;
-        }
-        DispatchDecision::Failed => {
-            scheduler_log_line("Failed");
-            return;
-        }
-    }
-
-    scheduler_log_str("(");
+    print_dispatch_decision_kind(decision.kind());
 
     if let Some(task_id) = decision.task_id() {
+        scheduler_log_str("(");
         crate::drivers::uart::write_dec_u64(task_id as u64);
+        scheduler_log_str(")");
     }
 
-    scheduler_log_line(")");
+    scheduler_log_line("");
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn print_dispatch_decision_kind(kind: DispatchDecisionKind) {
+    match kind {
+        DispatchDecisionKind::StartFresh => scheduler_log_str("StartFresh"),
+        DispatchDecisionKind::ResumeSaved => scheduler_log_str("ResumeSaved"),
+        DispatchDecisionKind::NoRunnableTask => scheduler_log_str("NoRunnableTask"),
+        DispatchDecisionKind::Failed => scheduler_log_str("Failed"),
+    }
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
