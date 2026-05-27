@@ -274,24 +274,8 @@ fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
-pub fn dispatch_next() -> DispatchResult {
-    scheduler_log_line("");
-    scheduler_log_line("scheduler dispatch_next:");
-
-    let current = current_task_id();
-
-    scheduler_log_str("  round-robin after: ");
-    match current {
-        Some(id) => task::print_task_name_by_id(id),
-        None => scheduler_log_str("none"),
-    }
-    scheduler_log_line("");
-
-    scheduler_log_str("  task table capacity: ");
-    crate::drivers::uart::write_dec_u64(task::max_tasks() as u64);
-    scheduler_log_line("");
-
-    let decision = match find_next_dispatchable_task_after(current) {
+fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
+    match find_next_dispatchable_task_after(current) {
         Some(task_id) => {
             print_dispatch_task_summary(task_id);
             choose_dispatch_decision(task_id)
@@ -300,8 +284,11 @@ pub fn dispatch_next() -> DispatchResult {
             scheduler_log_line("  selected task: none");
             DispatchDecision::NoRunnableTask
         }
-    };
+    }
+}
 
+#[cfg(feature = "scheduler_dispatch_test")]
+fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
     match decision {
         DispatchDecision::ResumeSaved(task_id) => {
             scheduler_log_line("  dispatch decision: resume saved task");
@@ -324,6 +311,29 @@ pub fn dispatch_next() -> DispatchResult {
             DispatchResult::Failed
         }
     }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+pub fn dispatch_next() -> DispatchResult {
+    scheduler_log_line("");
+    scheduler_log_line("scheduler dispatch_next:");
+
+    let current = current_task_id();
+
+    scheduler_log_str("  round-robin after: ");
+    match current {
+        Some(id) => task::print_task_name_by_id(id),
+        None => scheduler_log_str("none"),
+    }
+    scheduler_log_line("");
+
+    scheduler_log_str("  task table capacity: ");
+    crate::drivers::uart::write_dec_u64(task::max_tasks() as u64);
+    scheduler_log_line("");
+
+    let decision = select_dispatch_decision_after(current);
+
+    execute_dispatch_decision(decision)
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
