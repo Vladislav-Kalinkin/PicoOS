@@ -291,9 +291,16 @@ impl DispatchDecision {
     }
 
     fn is_dispatchable(self) -> bool {
+        self.kind().is_dispatchable()
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+impl DispatchDecisionKind {
+    fn is_dispatchable(self) -> bool {
         matches!(
             self,
-            DispatchDecision::StartFresh { .. } | DispatchDecision::ResumeSaved { .. }
+            DispatchDecisionKind::StartFresh | DispatchDecisionKind::ResumeSaved
         )
     }
 }
