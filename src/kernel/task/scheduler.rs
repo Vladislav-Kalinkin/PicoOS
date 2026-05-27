@@ -301,12 +301,16 @@ impl DispatchDecision {
     fn is_dispatchable(self) -> bool {
         self.kind().is_dispatchable()
     }
+
+    fn outcome(self) -> DispatchDecisionOutcome {
+        self.kind().outcome()
+    }
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecisionKind {
     fn is_dispatchable(self) -> bool {
-        matches!(self.outcome(), DispatchDecisionOutcome::Dispatchable)
+        self.outcome().is_dispatchable()
     }
 
     fn outcome(self) -> DispatchDecisionOutcome {
@@ -328,6 +332,10 @@ impl DispatchDecisionOutcome {
             DispatchDecisionOutcome::NoRunnableTask => "NoRunnableTask",
             DispatchDecisionOutcome::Failed => "Failed",
         }
+    }
+
+    fn is_dispatchable(self) -> bool {
+        matches!(self, DispatchDecisionOutcome::Dispatchable)
     }
 }
 
@@ -364,7 +372,7 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
     task::print_yes_no(decision.is_dispatchable());
     scheduler_log_line("");
     scheduler_log_str("  dispatch outcome: ");
-    scheduler_log_line(decision.kind().outcome().label());
+    scheduler_log_line(decision.outcome().label());
 
     match decision {
         DispatchDecision::ResumeSaved { task_id } => {
