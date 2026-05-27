@@ -1291,6 +1291,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("    scheduler task capacity from table: OK");
     crate::drivers::uart::write_line("    scheduler skips faulted tasks: OK");
     crate::drivers::uart::write_line("    no-runnable scheduler policy: OK");
+    crate::drivers::uart::write_line("    scheduler dispatch candidate selection: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision model: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision kind: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision outcome: OK");
