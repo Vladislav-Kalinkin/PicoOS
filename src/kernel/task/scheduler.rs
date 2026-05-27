@@ -368,6 +368,13 @@ impl DispatchCandidate {
             DispatchCandidate::None => None,
         }
     }
+
+    fn decision(self) -> DispatchDecision {
+        match self.task_id() {
+            Some(task_id) => choose_dispatch_decision(task_id),
+            None => DispatchDecision::NoRunnableTask,
+        }
+    }
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
@@ -414,13 +421,13 @@ fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
     match candidate.task_id() {
         Some(task_id) => {
             print_dispatch_task_summary(task_id);
-            choose_dispatch_decision(task_id)
         }
         None => {
             scheduler_log_line("  selected task: none");
-            DispatchDecision::NoRunnableTask
         }
     }
+
+    candidate.decision()
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
