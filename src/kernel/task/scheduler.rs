@@ -271,6 +271,13 @@ impl DispatchDecision {
             DispatchDecision::NoRunnableTask | DispatchDecision::Failed => None,
         }
     }
+
+    fn is_dispatchable(self) -> bool {
+        matches!(
+            self,
+            DispatchDecision::StartFresh { .. } | DispatchDecision::ResumeSaved { .. }
+        )
+    }
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
@@ -301,6 +308,11 @@ fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
 #[cfg(feature = "scheduler_dispatch_test")]
 fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
     print_dispatch_decision(decision);
+
+    scheduler_log_str("  dispatchable decision: ");
+    task::print_yes_no(decision.is_dispatchable());
+    scheduler_log_line("");
+
     match decision {
         DispatchDecision::ResumeSaved { task_id } => {
             scheduler_log_line("  dispatch action: resume task");
