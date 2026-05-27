@@ -272,6 +272,14 @@ enum DispatchDecisionKind {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DispatchDecisionOutcome {
+    Dispatchable,
+    NoRunnableTask,
+    Failed,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecision {
     fn kind(self) -> DispatchDecisionKind {
         match self {
@@ -298,10 +306,28 @@ impl DispatchDecision {
 #[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecisionKind {
     fn is_dispatchable(self) -> bool {
-        matches!(
-            self,
-            DispatchDecisionKind::StartFresh | DispatchDecisionKind::ResumeSaved
-        )
+        matches!(self.outcome(), DispatchDecisionOutcome::Dispatchable)
+    }
+
+    fn outcome(self) -> DispatchDecisionOutcome {
+        match self {
+            DispatchDecisionKind::StartFresh | DispatchDecisionKind::ResumeSaved => {
+                DispatchDecisionOutcome::Dispatchable
+            }
+            DispatchDecisionKind::NoRunnableTask => DispatchDecisionOutcome::NoRunnableTask,
+            DispatchDecisionKind::Failed => DispatchDecisionOutcome::Failed,
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+impl DispatchDecisionOutcome {
+    fn label(self) -> &'static str {
+        match self {
+            DispatchDecisionOutcome::Dispatchable => "Dispatchable",
+            DispatchDecisionOutcome::NoRunnableTask => "NoRunnableTask",
+            DispatchDecisionOutcome::Failed => "Failed",
+        }
     }
 }
 
@@ -337,6 +363,8 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
     scheduler_log_str("  dispatchable decision: ");
     task::print_yes_no(decision.is_dispatchable());
     scheduler_log_line("");
+    scheduler_log_str("  dispatch outcome: ");
+    scheduler_log_line(decision.kind().outcome().label());
 
     match decision {
         DispatchDecision::ResumeSaved { task_id } => {
