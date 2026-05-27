@@ -256,8 +256,8 @@ fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize
 #[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DispatchDecision {
-    StartFresh(usize),
-    ResumeSaved(usize),
+    StartFresh { task_id: usize },
+    ResumeSaved { task_id: usize },
     NoRunnableTask,
     Failed,
 }
@@ -265,9 +265,9 @@ enum DispatchDecision {
 #[cfg(feature = "scheduler_dispatch_test")]
 fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
     if task::is_resumable_task(task_id) {
-        DispatchDecision::ResumeSaved(task_id)
+        DispatchDecision::ResumeSaved { task_id }
     } else if task::is_fresh_ready_task(task_id) {
-        DispatchDecision::StartFresh(task_id)
+        DispatchDecision::StartFresh { task_id }
     } else {
         DispatchDecision::Failed
     }
@@ -291,14 +291,14 @@ fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
 fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
     print_dispatch_decision(decision);
     match decision {
-        DispatchDecision::ResumeSaved(task_id) => {
+        DispatchDecision::ResumeSaved { task_id } => {
             scheduler_log_line("  dispatch action: resume task");
 
             force_current_task(task_id);
 
             resume_selected_task_checked(task_id)
         }
-        DispatchDecision::StartFresh(task_id) => {
+        DispatchDecision::StartFresh { task_id } => {
             scheduler_log_line("  dispatch action: start fresh task");
 
             start_selected_task_checked(task_id)
@@ -316,12 +316,12 @@ fn print_dispatch_decision(decision: DispatchDecision) {
     scheduler_log_str("  dispatch decision: ");
 
     match decision {
-        DispatchDecision::StartFresh(task_id) => {
+        DispatchDecision::StartFresh { task_id } => {
             scheduler_log_str("StartFresh(");
             crate::drivers::uart::write_dec_u64(task_id as u64);
             scheduler_log_line(")");
         }
-        DispatchDecision::ResumeSaved(task_id) => {
+        DispatchDecision::ResumeSaved { task_id } => {
             scheduler_log_str("ResumeSaved(");
             crate::drivers::uart::write_dec_u64(task_id as u64);
             scheduler_log_line(")");
