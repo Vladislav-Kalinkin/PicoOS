@@ -289,9 +289,9 @@ fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
+    print_dispatch_decision(decision);
     match decision {
         DispatchDecision::ResumeSaved(task_id) => {
-            scheduler_log_line("  dispatch decision: resume saved task");
             scheduler_log_line("  dispatch action: resume task");
 
             force_current_task(task_id);
@@ -299,16 +299,38 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
             resume_selected_task_checked(task_id)
         }
         DispatchDecision::StartFresh(task_id) => {
-            scheduler_log_line("  dispatch decision: start fresh task");
             scheduler_log_line("  dispatch action: start fresh task");
 
             start_selected_task_checked(task_id)
         }
         DispatchDecision::NoRunnableTask => DispatchResult::NoRunnableTask,
         DispatchDecision::Failed => {
-            scheduler_log_line("  dispatch decision: failed");
             scheduler_log_line("  dispatch action: failed; task is not dispatchable");
             DispatchResult::Failed
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn print_dispatch_decision(decision: DispatchDecision) {
+    scheduler_log_str("  dispatch decision: ");
+
+    match decision {
+        DispatchDecision::StartFresh(task_id) => {
+            scheduler_log_str("StartFresh(");
+            crate::drivers::uart::write_dec_u64(task_id as u64);
+            scheduler_log_line(")");
+        }
+        DispatchDecision::ResumeSaved(task_id) => {
+            scheduler_log_str("ResumeSaved(");
+            crate::drivers::uart::write_dec_u64(task_id as u64);
+            scheduler_log_line(")");
+        }
+        DispatchDecision::NoRunnableTask => {
+            scheduler_log_line("NoRunnableTask");
+        }
+        DispatchDecision::Failed => {
+            scheduler_log_line("Failed");
         }
     }
 }
