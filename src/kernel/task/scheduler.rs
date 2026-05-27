@@ -280,6 +280,13 @@ enum DispatchDecisionOutcome {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DispatchCandidate {
+    Task { task_id: usize },
+    None,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecision {
     fn kind(self) -> DispatchDecisionKind {
         match self {
@@ -340,6 +347,16 @@ impl DispatchDecisionOutcome {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+impl DispatchCandidate {
+    fn task_id(self) -> Option<usize> {
+        match self {
+            DispatchCandidate::Task { task_id } => Some(task_id),
+            DispatchCandidate::None => None,
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
     if task::is_resumable_task(task_id) {
         DispatchDecision::ResumeSaved { task_id }
@@ -352,7 +369,9 @@ fn choose_dispatch_decision(task_id: usize) -> DispatchDecision {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
-    match find_next_dispatchable_task_after(current) {
+    let candidate = select_dispatch_candidate_after(current);
+
+    match candidate.task_id() {
         Some(task_id) => {
             print_dispatch_task_summary(task_id);
             choose_dispatch_decision(task_id)
@@ -361,6 +380,14 @@ fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
             scheduler_log_line("  selected task: none");
             DispatchDecision::NoRunnableTask
         }
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
+fn select_dispatch_candidate_after(current: Option<usize>) -> DispatchCandidate {
+    match find_next_dispatchable_task_after(current) {
+        Some(task_id) => DispatchCandidate::Task { task_id },
+        None => DispatchCandidate::None,
     }
 }
 
