@@ -399,8 +399,12 @@ impl DispatchPipeline {
         Self { current }
     }
 
+    fn decision(self) -> DispatchDecision {
+        select_dispatch_decision_after(self.current)
+    }
+
     fn run(self) -> DispatchResult {
-        let decision = select_dispatch_decision_after(self.current);
+        let decision = self.decision();
 
         execute_dispatch_decision(decision)
     }
