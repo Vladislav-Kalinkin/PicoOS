@@ -287,6 +287,12 @@ enum DispatchCandidate {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+#[derive(Clone, Copy)]
+struct DispatchPipeline {
+    current: Option<usize>,
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DispatchCandidateKind {
     Task,
@@ -388,6 +394,19 @@ impl DispatchCandidateKind {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
+impl DispatchPipeline {
+    fn new(current: Option<usize>) -> Self {
+        Self { current }
+    }
+
+    fn run(self) -> DispatchResult {
+        let decision = select_dispatch_decision_after(self.current);
+
+        execute_dispatch_decision(decision)
+    }
+}
+
+#[cfg(feature = "scheduler_dispatch_test")]
 fn build_dispatch_decision_for_task(task_id: usize) -> DispatchDecision {
     if task::is_resumable_task(task_id) {
         DispatchDecision::ResumeSaved { task_id }
@@ -465,9 +484,7 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn run_dispatch_pipeline_after(current: Option<usize>) -> DispatchResult {
-    let decision = select_dispatch_decision_after(current);
-
-    execute_dispatch_decision(decision)
+    DispatchPipeline::new(current).run()
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
