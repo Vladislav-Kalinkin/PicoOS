@@ -1308,3 +1308,19 @@ pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
         result,
     }
 }
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn mark_task_finished(id: usize) -> bool {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                TASKS[slot].state = TaskState::Finished;
+                TASKS[slot].can_resume = false;
+                return true;
+            }
+        }
+    }
+
+    false
+}

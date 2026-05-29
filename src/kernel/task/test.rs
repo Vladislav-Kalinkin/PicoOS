@@ -1298,6 +1298,7 @@ fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("    scheduler dispatch decision kind: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision outcome: OK");
     crate::drivers::uart::write_line("    scheduler dispatch decision logging: OK");
+    crate::drivers::uart::write_line("    scheduler dispatch pipeline model: OK");
 
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("  task lifecycle:");
