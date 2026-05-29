@@ -403,8 +403,14 @@ impl DispatchPipeline {
         select_dispatch_candidate_after(self.current)
     }
 
+    fn decision_from_candidate(self, candidate: DispatchCandidate) -> DispatchDecision {
+        select_dispatch_decision_from_candidate(candidate)
+    }
+
     fn decision(self) -> DispatchDecision {
-        select_dispatch_decision_from_candidate(self.candidate())
+        let candidate = self.candidate();
+
+        self.decision_from_candidate(candidate)
     }
 
     fn run(self) -> DispatchResult {
