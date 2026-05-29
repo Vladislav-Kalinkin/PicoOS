@@ -399,8 +399,12 @@ impl DispatchPipeline {
         Self { current }
     }
 
+    fn candidate(self) -> DispatchCandidate {
+        select_dispatch_candidate_after(self.current)
+    }
+
     fn decision(self) -> DispatchDecision {
-        select_dispatch_decision_after(self.current)
+        select_dispatch_decision_from_candidate(self.candidate())
     }
 
     fn run(self) -> DispatchResult {
@@ -436,9 +440,7 @@ fn print_dispatch_candidate(candidate: DispatchCandidate) {
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
-fn select_dispatch_decision_after(current: Option<usize>) -> DispatchDecision {
-    let candidate = select_dispatch_candidate_after(current);
-
+fn select_dispatch_decision_from_candidate(candidate: DispatchCandidate) -> DispatchDecision {
     print_dispatch_candidate(candidate);
 
     match candidate.task_id() {
