@@ -36,33 +36,10 @@ pub extern "C" fn kernel_main() -> ! {
     {
         arch::init_exceptions();
         arch::print_cpu_info();
-
-        #[cfg(feature = "kernel_fault_guard_test")]
-        {
-            kernel::task::test_kernel_fault_guard();
-        }
-
-        #[cfg(not(feature = "kernel_fault_guard_test"))]
-        {
-            kernel::test::run_memory_tests();
-        }
-
-        #[cfg(feature = "task_yield_test")]
-        {
-            kernel::task::test_tasks_with_yield_worker();
-        }
-
-        #[cfg(not(feature = "task_yield_test"))]
-        {
-            kernel::task::test_tasks();
-        }
+        kernel::test::run_runtime_selftest_bootstrap();
 
         kernel::task::scheduler::init();
-
-        #[cfg(feature = "task_yield_test")]
-        {
-            kernel::task::test_task_yield();
-        }
+        kernel::test::run_runtime_selftest_after_scheduler_init();
 
         {
             use crate::arch::riscv64::{cpu, timer};
