@@ -443,8 +443,15 @@ pub fn find_next_ready_after(current_id: Option<usize>) -> Option<usize> {
     None
 }
 
+#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn set_running(id: usize) {
+    let _ = mark_task_running(id);
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn mark_task_running(id: usize) -> bool {
     unsafe {
         for slot in 0..MAX_TASKS {
             if matches!(TASKS[slot].state, TaskState::Running) && TASKS[slot].id != id {
@@ -455,10 +462,12 @@ pub fn set_running(id: usize) {
         for slot in 0..MAX_TASKS {
             if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
                 TASKS[slot].state = TaskState::Running;
-                return;
+                return true;
             }
         }
     }
+
+    false
 }
 
 #[allow(clippy::needless_range_loop)]

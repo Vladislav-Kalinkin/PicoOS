@@ -35,7 +35,9 @@ pub fn schedule_next() -> Option<usize> {
     let current = unsafe { CURRENT_TASK_ID };
     let next = task::find_next_ready_after(current)?;
 
-    task::set_running(next);
+    if !task::mark_task_running(next) {
+        return None;
+    }
 
     unsafe {
         CURRENT_TASK_ID = Some(next);
@@ -103,7 +105,9 @@ pub fn print_task_context(id: usize) {
 }
 
 pub fn force_current_task(id: usize) {
-    task::set_running(id);
+    if !task::mark_task_running(id) {
+        return;
+    }
 
     unsafe {
         CURRENT_TASK_ID = Some(id);
