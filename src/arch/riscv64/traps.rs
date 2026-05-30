@@ -80,16 +80,16 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                 let fault_mcause = cause;
                 let fault_mepc = mepc;
                 let fault_mtval = mtval;
-                let fault_reason =
-                    crate::kernel::task::table::TaskFaultReason::from_mcause(fault_mcause);
 
-                crate::kernel::task::table::set_task_fault_info(
+                let Some(fault_reason) = crate::kernel::task::table::record_task_fault(
                     task_id,
-                    fault_reason,
                     fault_mcause,
                     fault_mepc,
                     fault_mtval,
-                );
+                ) else {
+                    uart::write_line("  record task fault: FAILED");
+                    arch::halt();
+                };
 
                 uart::write_str("  fault reason: ");
                 crate::kernel::task::table::print_task_fault_reason(fault_reason);
@@ -107,11 +107,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                 uart::write_hex_u64(fault_mtval);
                 uart::write_line("");
 
-                let faulted_marked = crate::kernel::task::table::mark_task_faulted(task_id);
-
-                uart::write_str("  mark faulted: ");
-                crate::kernel::task::table::print_yes_no(faulted_marked);
-                uart::write_line("");
+                uart::write_line("  record task fault: OK");
 
                 let task_sp = frame as u64;
                 let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();

@@ -236,16 +236,16 @@ pub fn simulated_real_trap_fault() -> ! {
             let fault_mcause = crate::arch::cpu::mcause();
             let fault_mepc = crate::arch::cpu::mepc();
             let fault_mtval = crate::arch::cpu::mtval();
-            let fault_reason =
-                crate::kernel::task::table::TaskFaultReason::from_mcause(fault_mcause);
 
-            crate::kernel::task::table::set_task_fault_info(
+            let Some(fault_reason) = crate::kernel::task::table::record_task_fault(
                 task_id,
-                fault_reason,
                 fault_mcause,
                 fault_mepc,
                 fault_mtval,
-            );
+            ) else {
+                uart::write_line("  record task fault: FAILED");
+                crate::arch::halt();
+            };
 
             // Печатаем детали fault
             uart::write_str("  fault reason: ");
@@ -261,11 +261,7 @@ pub fn simulated_real_trap_fault() -> ! {
             uart::write_hex_u64(fault_mtval);
             uart::write_line("");
 
-            let faulted_marked = crate::kernel::task::table::mark_task_faulted(task_id);
-
-            uart::write_str("  mark faulted: ");
-            crate::kernel::task::table::print_yes_no(faulted_marked);
-            uart::write_line("");
+            uart::write_line("  record task fault: OK");
 
             uart::write_str("  task: ");
             crate::kernel::task::table::print_task_name_by_id(task_id);

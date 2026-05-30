@@ -1031,6 +1031,17 @@ pub fn set_task_fault_info(
 }
 
 #[allow(dead_code)]
+pub fn record_task_fault(id: usize, mcause: u64, mepc: u64, mtval: u64) -> Option<TaskFaultReason> {
+    let reason = TaskFaultReason::from_mcause(mcause);
+
+    if set_task_fault_info(id, reason, mcause, mepc, mtval) && mark_task_faulted(id) {
+        Some(reason)
+    } else {
+        None
+    }
+}
+
+#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_fault_reason(id: usize) -> Option<TaskFaultReason> {
     unsafe {
