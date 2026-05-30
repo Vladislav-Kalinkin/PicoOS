@@ -974,6 +974,16 @@ pub fn get_last_returned_task_id() -> Option<usize> {
     unsafe { LAST_RETURNED_TASK_ID }
 }
 
+#[allow(dead_code)]
+pub fn is_task_ready(id: usize) -> bool {
+    matches!(get_task_state(id), Some(TaskState::Ready))
+}
+
+#[allow(dead_code)]
+pub fn is_task_running(id: usize) -> bool {
+    matches!(get_task_state(id), Some(TaskState::Running))
+}
+
 #[cfg(feature = "scheduler_reentry_test")]
 pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     let state = get_task_state(id)?;
@@ -996,7 +1006,7 @@ pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
 
 #[allow(dead_code)]
 pub fn is_resumable_task(id: usize) -> bool {
-    matches!(get_task_state(id), Some(TaskState::Ready))
+    is_task_ready(id)
         && matches!(can_task_resume(id), Some(true))
         && matches!(get_task_return_kind(id), Some(TaskReturnKind::Yield))
         && get_task_resume_frame(id)
@@ -1006,7 +1016,7 @@ pub fn is_resumable_task(id: usize) -> bool {
 
 #[allow(dead_code)]
 pub fn is_fresh_ready_task(id: usize) -> bool {
-    matches!(get_task_state(id), Some(TaskState::Ready))
+    is_task_ready(id)
         && !has_started(id)
         && matches!(can_task_resume(id), Some(false))
 }
