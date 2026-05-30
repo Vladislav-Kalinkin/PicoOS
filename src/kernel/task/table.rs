@@ -36,7 +36,10 @@ pub enum TaskReturnKind {
 }
 
 #[allow(dead_code)]
-#[cfg(feature = "scheduler_reentry_test")]
+#[cfg(any(
+    feature = "scheduler_reentry_test",
+    feature = "scheduler_dispatch_test"
+))]
 #[derive(Clone, Copy)]
 pub struct TaskReturnSnapshot {
     pub task_id: usize,
@@ -444,6 +447,7 @@ pub fn find_next_ready_after(current_id: Option<usize>) -> Option<usize> {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_reentry_test")]
 #[allow(clippy::needless_range_loop)]
 pub fn set_running(id: usize) {
     let _ = mark_task_running(id);
@@ -984,7 +988,27 @@ pub fn is_task_running(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Running))
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
+#[allow(dead_code)]
+pub fn is_ready_running_faulted_finished_invariant_ok(id: usize) -> bool {
+    match get_task_state(id) {
+        Some(TaskState::Ready) => !is_task_running(id) && !is_task_faulted(id) && !is_task_finished(id),
+        Some(TaskState::Running) => !is_task_ready(id) && !is_task_faulted(id) && !is_task_finished(id),
+        Some(TaskState::Faulted) => !is_task_ready(id) && !is_task_running(id) && !is_task_finished(id),
+        Some(TaskState::Finished) => !is_task_ready(id) && !is_task_running(id) && !is_task_faulted(id),
+        _ => false,
+    }
+}
+
+#[allow(dead_code)]
+pub fn can_dispatch_from_ready(id: usize) -> bool {
+    is_task_ready(id) && is_ready_running_faulted_finished_invariant_ok(id)
+}
+
+#[cfg(any(
+    feature = "scheduler_reentry_test",
+    feature = "scheduler_dispatch_test"
+))]
+#[allow(dead_code)]
 pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     let state = get_task_state(id)?;
     let last_return = get_task_return_kind(id)?;
@@ -998,7 +1022,11 @@ pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     })
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
+#[cfg(any(
+    feature = "scheduler_reentry_test",
+    feature = "scheduler_dispatch_test"
+))]
+#[allow(dead_code)]
 pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
     let id = get_last_returned_task_id()?;
     get_task_return_snapshot(id)
@@ -1006,7 +1034,7 @@ pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
 
 #[allow(dead_code)]
 pub fn is_resumable_task(id: usize) -> bool {
-    is_task_ready(id)
+    can_dispatch_from_ready(id)
         && matches!(can_task_resume(id), Some(true))
         && matches!(get_task_return_kind(id), Some(TaskReturnKind::Yield))
         && get_task_resume_frame(id)
@@ -1016,7 +1044,7 @@ pub fn is_resumable_task(id: usize) -> bool {
 
 #[allow(dead_code)]
 pub fn is_fresh_ready_task(id: usize) -> bool {
-    is_task_ready(id)
+    can_dispatch_from_ready(id)
         && !has_started(id)
         && matches!(can_task_resume(id), Some(false))
 }
@@ -1132,6 +1160,7 @@ pub fn print_task_fault_reason(reason: TaskFaultReason) {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_dispatch_test")]
 pub fn get_task_id_at_slot(slot: usize) -> Option<usize> {
     if slot >= MAX_TASKS {
         return None;
@@ -1214,6 +1243,7 @@ pub fn find_first_faulted_task() -> Option<usize> {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy)]
 pub struct TerminalTaskDispatchInvariantSnapshot {
     pub terminal: bool,
@@ -1224,6 +1254,7 @@ pub struct TerminalTaskDispatchInvariantSnapshot {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_dispatch_test")]
 pub fn get_terminal_task_dispatch_invariants(id: usize) -> TerminalTaskDispatchInvariantSnapshot {
     let terminal = is_terminal_task(id);
     let resumable = is_resumable_task(id);
@@ -1242,11 +1273,13 @@ pub fn get_terminal_task_dispatch_invariants(id: usize) -> TerminalTaskDispatchI
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_dispatch_test")]
 pub fn validate_terminal_task_dispatch_invariants(id: usize) -> bool {
     get_terminal_task_dispatch_invariants(id).result
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy)]
 pub struct BreakpointFaultMetadataAssertionSnapshot {
     pub reason_breakpoint: bool,
@@ -1257,6 +1290,7 @@ pub struct BreakpointFaultMetadataAssertionSnapshot {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_dispatch_test")]
 pub fn get_breakpoint_fault_metadata_assertions(
     id: usize,
 ) -> BreakpointFaultMetadataAssertionSnapshot {
@@ -1284,6 +1318,7 @@ pub fn get_breakpoint_fault_metadata_assertions(
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_reentry_test")]
 #[derive(Clone, Copy)]
 pub struct TaskFaultCompletionSnapshot {
     pub finished_task_id: Option<usize>,
@@ -1300,6 +1335,7 @@ pub struct TaskFaultCompletionSnapshot {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "scheduler_reentry_test")]
 pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
     let finished_task_id = find_first_finished_task();
     let faulted_task_id = find_first_faulted_task();
