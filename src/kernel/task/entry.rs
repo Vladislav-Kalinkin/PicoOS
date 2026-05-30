@@ -261,16 +261,11 @@ pub fn simulated_real_trap_fault() -> ! {
             uart::write_hex_u64(fault_mtval);
             uart::write_line("");
 
-            // Помечаем задачу как Faulted
-            crate::kernel::task::table::set_task_state(
-                task_id,
-                crate::kernel::task::table::TaskState::Faulted,
-            );
-            crate::kernel::task::table::set_task_return_kind(
-                task_id,
-                crate::kernel::task::table::TaskReturnKind::Fault,
-            );
-            crate::kernel::task::table::set_task_can_resume(task_id, false);
+            let faulted_marked = crate::kernel::task::table::mark_task_faulted(task_id);
+
+            uart::write_str("  mark faulted: ");
+            crate::kernel::task::table::print_yes_no(faulted_marked);
+            uart::write_line("");
 
             uart::write_str("  task: ");
             crate::kernel::task::table::print_task_name_by_id(task_id);

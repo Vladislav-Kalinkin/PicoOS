@@ -685,6 +685,7 @@ fn print_state(state: TaskState) {
     }
 }
 
+#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn set_task_state(id: usize, state: TaskState) -> bool {
     unsafe {
@@ -797,6 +798,7 @@ pub fn is_sp_inside_task_stack(id: usize, sp: u64) -> Option<bool> {
     None
 }
 
+#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn set_task_can_resume(id: usize, can_resume: bool) -> bool {
     unsafe {
@@ -1316,6 +1318,41 @@ pub fn mark_task_finished(id: usize) -> bool {
         for slot in 0..MAX_TASKS {
             if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
                 TASKS[slot].state = TaskState::Finished;
+                TASKS[slot].last_return_kind = TaskReturnKind::Exit;
+                TASKS[slot].can_resume = false;
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn mark_task_ready_after_yield(id: usize) -> bool {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                TASKS[slot].state = TaskState::Ready;
+                TASKS[slot].last_return_kind = TaskReturnKind::Yield;
+                TASKS[slot].can_resume = true;
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn mark_task_faulted(id: usize) -> bool {
+    unsafe {
+        for slot in 0..MAX_TASKS {
+            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+                TASKS[slot].state = TaskState::Faulted;
+                TASKS[slot].last_return_kind = TaskReturnKind::Fault;
                 TASKS[slot].can_resume = false;
                 return true;
             }

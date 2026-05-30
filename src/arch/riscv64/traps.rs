@@ -107,6 +107,12 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                 uart::write_hex_u64(fault_mtval);
                 uart::write_line("");
 
+                let faulted_marked = crate::kernel::task::table::mark_task_faulted(task_id);
+
+                uart::write_str("  mark faulted: ");
+                crate::kernel::task::table::print_yes_no(faulted_marked);
+                uart::write_line("");
+
                 let task_sp = frame as u64;
                 let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
                 let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();

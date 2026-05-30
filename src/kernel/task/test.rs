@@ -320,7 +320,6 @@ pub fn handle_task_return_for_debug_test() {
     print_task_name_by_id(task_id);
     uart::write_line("");
 
-    crate::kernel::task::table::set_task_return_kind(task_id, kind);
     crate::kernel::task::table::set_last_returned_task_id(task_id);
 
     uart::write_str("  captured CPU context:");
@@ -329,36 +328,35 @@ pub fn handle_task_return_for_debug_test() {
 
     match kind {
         TaskReturnKind::Exit => {
-            crate::kernel::task::table::set_task_state(
-                task_id,
-                crate::kernel::task::table::TaskState::Finished,
-            );
+            let finished_marked = crate::kernel::task::table::mark_task_finished(task_id);
 
-            crate::kernel::task::table::set_task_can_resume(task_id, false);
+            crate::drivers::uart::write_str("  mark finished: ");
+            crate::kernel::task::table::print_yes_no(finished_marked);
+            crate::drivers::uart::write_line("");
 
             crate::kernel::task::scheduler::switch_to_idle();
         }
         TaskReturnKind::Yield => {
-            crate::kernel::task::table::set_task_state(
-                task_id,
-                crate::kernel::task::table::TaskState::Ready,
-            );
+            let ready_marked = crate::kernel::task::table::mark_task_ready_after_yield(task_id);
 
-            crate::kernel::task::table::set_task_can_resume(task_id, true);
+            crate::drivers::uart::write_str("  mark ready after yield: ");
+            crate::kernel::task::table::print_yes_no(ready_marked);
+            crate::drivers::uart::write_line("");
 
             crate::kernel::task::scheduler::switch_to_idle();
         }
         TaskReturnKind::Fault => {
-            crate::kernel::task::table::set_task_state(
-                task_id,
-                crate::kernel::task::table::TaskState::Faulted,
-            );
+            let faulted_marked = crate::kernel::task::table::mark_task_faulted(task_id);
 
-            crate::kernel::task::table::set_task_can_resume(task_id, false);
+            crate::drivers::uart::write_str("  mark faulted: ");
+            crate::kernel::task::table::print_yes_no(faulted_marked);
+            crate::drivers::uart::write_line("");
 
             crate::kernel::task::scheduler::switch_to_idle();
         }
-        TaskReturnKind::None => {}
+        TaskReturnKind::None => {
+            crate::kernel::task::table::set_task_return_kind(task_id, kind);
+        }
     }
 
     uart::write_str("  new state: ");
