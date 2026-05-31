@@ -8,7 +8,8 @@ fi
 
 marker=$1
 timeout_seconds=${QEMU_EXPECT_TIMEOUT:-20}
-log_pipe=$(mktemp -u "${TMPDIR:-/tmp}/picoos-qemu.XXXXXX")
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/picoos-qemu.XXXXXX")
+log_pipe="$tmp_dir/out"
 mkfifo "$log_pipe"
 
 qemu-system-riscv64 \
@@ -23,7 +24,7 @@ status=1
 cleanup() {
   kill "$qemu_pid" 2>/dev/null || true
   wait "$qemu_pid" 2>/dev/null || true
-  rm -f "$log_pipe"
+  rm -rf "$tmp_dir"
 }
 trap cleanup EXIT
 

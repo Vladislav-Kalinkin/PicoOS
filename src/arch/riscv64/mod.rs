@@ -391,9 +391,7 @@ pub fn yield_to_kernel_raw(
 }
 
 #[allow(dead_code)]
-pub fn restore_verified_resume_frame(
-    frame: crate::kernel::task::cpu_context::TaskCpuContext,
-) -> ! {
+pub fn restore_verified_resume_frame(frame: crate::kernel::task::cpu_context::TaskCpuContext) -> ! {
     crate::drivers::uart::write_line("arch restore verified resume frame:");
 
     crate::drivers::uart::write_str(" restore sp: ");

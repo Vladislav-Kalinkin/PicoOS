@@ -280,10 +280,10 @@ pub fn handle_task_return_for_debug_test() {
 
     let mut cpu_context = crate::arch::capture_task_cpu_context(task_sp, kernel_return_pc);
 
-    if matches!(kind, TaskReturnKind::Yield) {
+    if matches!(kind, TaskReturnKind::Yield | TaskReturnKind::Sleep) {
         let debug_resume_pc = crate::kernel::task::debug::debug_task_resume_pc();
 
-        uart::write_str("  debug resume_pc from yield: ");
+        uart::write_str("  debug resume_pc from return boundary: ");
         uart::write_hex_u64(debug_resume_pc);
         uart::write_line("");
 

@@ -1088,10 +1088,27 @@ pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
 pub fn is_resumable_task(id: usize) -> bool {
     can_dispatch_from_ready(id)
         && matches!(can_task_resume(id), Some(true))
-        && matches!(get_task_return_kind(id), Some(TaskReturnKind::Yield))
-        && get_task_resume_frame(id)
-            .map(|frame| frame.is_valid())
-            .unwrap_or(false)
+        && matches!(
+            get_task_return_kind(id),
+            Some(TaskReturnKind::Yield | TaskReturnKind::Sleep)
+        )
+        && is_resume_frame_safe_for_task(id)
+}
+
+#[allow(dead_code)]
+pub fn is_resume_frame_safe_for_task(id: usize) -> bool {
+    let Some(frame) = get_task_resume_frame(id) else {
+        return false;
+    };
+
+    frame.is_valid()
+        && matches!(is_sp_inside_task_stack(id, frame.sp), Some(true))
+        && memory::is_inside_kernel_text(frame.resume_pc)
+        && memory::is_inside_kernel_text(frame.return_pc)
+        && matches!(
+            (get_task_last_task_sp(id), get_task_last_kernel_return_pc(id)),
+            (Some(last_sp), Some(return_pc)) if frame.sp == last_sp && frame.return_pc == return_pc
+        )
 }
 
 #[allow(dead_code)]
@@ -1522,9 +1539,14 @@ pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
             };
 
             if current_tick >= wake_tick {
+                let can_resume = TASKS[slot].has_started && TASKS[slot].cpu_context.is_valid();
                 TASKS[slot].state = TaskState::Ready;
-                TASKS[slot].last_return_kind = TaskReturnKind::None;
-                TASKS[slot].can_resume = false;
+                TASKS[slot].last_return_kind = if can_resume {
+                    TaskReturnKind::Sleep
+                } else {
+                    TaskReturnKind::None
+                };
+                TASKS[slot].can_resume = can_resume;
                 TASKS[slot].sleep_until_tick = None;
                 woke += 1;
             }
