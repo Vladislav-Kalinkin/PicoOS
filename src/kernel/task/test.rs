@@ -19,7 +19,7 @@ use crate::kernel::task::entry::task_trampoline;
 #[allow(unused_imports)]
 use crate::kernel::task::table::{
     create_task, get_task_entry, get_task_stack_start, get_task_stack_top, print_task_name_by_id,
-    print_tasks, TaskReturnKind,
+    print_tasks, TaskReturnContext, TaskReturnKind,
 };
 
 #[allow(unused_imports)]
@@ -84,6 +84,11 @@ pub fn test_tasks_with_yield_worker() {
     }
 
     print_tasks();
+
+    #[cfg(feature = "task_sleep_test")]
+    {
+        bootstrap::test_task_sleep_wakeup_table_selftest();
+    }
 }
 
 fn idle_task() {
@@ -203,7 +208,7 @@ pub fn run_task_on_own_stack(task_id: usize) -> ! {
     set_debug_current_stack_bounds(stack_start, stack_top);
     set_debug_kernel_sp_before_task(kernel_sp_before_task);
     set_debug_kernel_return_pc(kernel_return_pc);
-    crate::kernel::task::table::mark_started(task_id);
+    crate::kernel::task::table::mark_task_started(task_id);
     unsafe {
         crate::arch::start_task_on_stack(entry as usize, stack_top);
     }
@@ -267,12 +272,11 @@ pub fn handle_task_return_for_debug_test() {
     let kernel_sp = debug_kernel_sp_before_task();
     let kernel_return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
 
-    crate::kernel::task::table::set_task_last_return_context(
-        task_id,
+    let return_context = TaskReturnContext {
         task_sp,
         kernel_sp,
         kernel_return_pc,
-    );
+    };
 
     let mut cpu_context = crate::arch::capture_task_cpu_context(task_sp, kernel_return_pc);
 
@@ -295,49 +299,33 @@ pub fn handle_task_return_for_debug_test() {
         }
     }
 
-    crate::kernel::task::table::set_task_cpu_context(task_id, cpu_context);
-
     uart::write_str("  task: ");
     print_task_name_by_id(task_id);
     uart::write_line("");
-
-    crate::kernel::task::table::set_last_returned_task_id(task_id);
 
     uart::write_str("  captured CPU context:");
     crate::kernel::task::cpu_context::print_cpu_context(cpu_context);
     uart::write_line("");
 
+    let transition_ok = crate::kernel::task::table::apply_task_return_transition(
+        task_id,
+        kind,
+        return_context,
+        cpu_context,
+    );
+
     match kind {
-        TaskReturnKind::Exit => {
-            let finished_marked = crate::kernel::task::table::mark_task_finished(task_id);
+        TaskReturnKind::Exit => crate::drivers::uart::write_str("  mark finished: "),
+        TaskReturnKind::Yield => crate::drivers::uart::write_str("  mark ready after yield: "),
+        TaskReturnKind::Sleep => crate::drivers::uart::write_str("  mark blocked for sleep: "),
+        TaskReturnKind::Fault => crate::drivers::uart::write_str("  mark faulted: "),
+        TaskReturnKind::None => crate::drivers::uart::write_str("  set return kind: "),
+    }
+    crate::kernel::task::table::print_yes_no(transition_ok);
+    crate::drivers::uart::write_line("");
 
-            crate::drivers::uart::write_str("  mark finished: ");
-            crate::kernel::task::table::print_yes_no(finished_marked);
-            crate::drivers::uart::write_line("");
-
-            crate::kernel::task::scheduler::switch_to_idle();
-        }
-        TaskReturnKind::Yield => {
-            let ready_marked = crate::kernel::task::table::mark_task_ready_after_yield(task_id);
-
-            crate::drivers::uart::write_str("  mark ready after yield: ");
-            crate::kernel::task::table::print_yes_no(ready_marked);
-            crate::drivers::uart::write_line("");
-
-            crate::kernel::task::scheduler::switch_to_idle();
-        }
-        TaskReturnKind::Fault => {
-            let faulted_marked = crate::kernel::task::table::mark_task_faulted(task_id);
-
-            crate::drivers::uart::write_str("  mark faulted: ");
-            crate::kernel::task::table::print_yes_no(faulted_marked);
-            crate::drivers::uart::write_line("");
-
-            crate::kernel::task::scheduler::switch_to_idle();
-        }
-        TaskReturnKind::None => {
-            crate::kernel::task::table::set_task_return_kind(task_id, kind);
-        }
+    if !matches!(kind, TaskReturnKind::None) {
+        crate::kernel::task::scheduler::switch_to_idle();
     }
 
     uart::write_str("  new state: ");
@@ -370,6 +358,7 @@ pub fn handle_task_return_for_debug_test() {
     print_last_task_sp_check(task_id, task_sp);
     invariants::print_resume_eligibility_check(task_id);
     invariants::print_cpu_context_consistency_check(task_id);
+    invariants::print_illegal_transition_checks(task_id);
 
     #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
     {

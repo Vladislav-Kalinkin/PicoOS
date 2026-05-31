@@ -46,6 +46,19 @@ pub fn schedule_next() -> Option<usize> {
     Some(next)
 }
 
+pub fn decide_next_task_dry_run() -> Option<usize> {
+    task::find_next_ready_after(current_task_id())
+}
+
+pub fn decide_next_resumable_task_dry_run() -> Option<usize> {
+    let candidate = task::find_next_ready_after(current_task_id())?;
+    if task::is_resumable_task(candidate) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
 pub fn current_task_id() -> Option<usize> {
     unsafe { CURRENT_TASK_ID }
 }
@@ -705,7 +718,7 @@ fn print_resume_frame_summary(
 
 #[cfg(feature = "scheduler_dispatch_test")]
 fn scheduler_log_line(message: &str) {
-    crate::drivers::uart::write_line(message);
+    crate::kernel::log::trace("scheduler", message);
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]
@@ -770,6 +783,7 @@ pub fn handle_task_return(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResul
 
     match snapshot.last_return {
         crate::kernel::task::table::TaskReturnKind::Yield => handle_task_yield(snapshot),
+        crate::kernel::task::table::TaskReturnKind::Sleep => handle_task_exit(snapshot),
         crate::kernel::task::table::TaskReturnKind::Exit => handle_task_exit(snapshot),
         crate::kernel::task::table::TaskReturnKind::Fault => handle_task_fault(snapshot),
         crate::kernel::task::table::TaskReturnKind::None => handle_task_return_none(snapshot),

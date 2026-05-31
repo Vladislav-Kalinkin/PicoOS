@@ -51,7 +51,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
         match crate::kernel::task::fault::classify_current_trap_fault() {
             crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
-                uart::write_line("trap handler action: kernel fault -> halt");
+                crate::kernel::log::fail("trap", "kernel fault -> halt");
 
                 #[cfg(feature = "kernel_fault_guard_test")]
                 {
@@ -85,7 +85,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
             }
 
             crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
-                uart::write_line("trap handler action: marking current task as Faulted");
+                crate::kernel::log::info("trap", "marking current task as Faulted");
 
                 if crate::kernel::task::fault::record_current_task_fault(cause, mepc, mtval)
                     .is_none()
@@ -109,7 +109,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                 uart::write_hex_u64(return_pc);
                 uart::write_line("");
 
-                uart::write_line("trap handler action: return to kernel task return path");
+                crate::kernel::log::info("trap", "return to kernel task return path");
 
                 crate::kernel::task::fault::return_current_task_fault(
                     task_sp, kernel_sp, return_pc,
@@ -120,7 +120,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     #[cfg(not(feature = "scheduler_fault_lifecycle_test"))]
     {
-        uart::write_line("system halted after trap");
+        crate::kernel::log::fail("trap", "system halted after trap");
         arch::halt();
     }
 }
@@ -134,6 +134,7 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     let saved_task = crate::kernel::task::scheduler::save_current_context(saved_sp, saved_pc);
 
     let tick = crate::kernel::ticks::increment();
+    let woke_tasks = crate::kernel::task::wake_sleeping_tasks(tick);
 
     uart::write_str("tick: ");
     uart::write_dec_u64(tick);
@@ -147,9 +148,18 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
         None => uart::write_str("none"),
     }
 
-    uart::write_str(" next task: ");
-    crate::kernel::task::scheduler::schedule_next();
-    crate::kernel::task::scheduler::print_current_task_name();
+    let decided_next = crate::kernel::task::scheduler::decide_next_task_dry_run();
+    let decided_resumable = crate::kernel::task::scheduler::decide_next_resumable_task_dry_run();
+
+    uart::write_str(" decision next: ");
+    match decided_next {
+        Some(id) => crate::kernel::task::scheduler::print_task_name(id),
+        None => uart::write_str("none"),
+    }
+
+    uart::write_str(" mode: dry-run");
+    uart::write_str(" woke: ");
+    uart::write_dec_u64(woke_tasks as u64);
 
     uart::write_str(" context:");
     match crate::kernel::task::scheduler::current_task_id() {
@@ -158,6 +168,30 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     }
 
     uart::write_line("");
+    crate::kernel::log::info("timer", "scheduler decision computed");
+
+    if let Some(next_id) = decided_resumable {
+        crate::kernel::task::scheduler::force_current_task(next_id);
+        crate::kernel::log::ok("timer", "preemption prototype: switching to resumable task");
+
+        let Some(stack_start) = crate::kernel::task::get_task_stack_start(next_id) else {
+            crate::kernel::log::fail("timer", "preemption missing task stack start");
+            arch::halt();
+        };
+        let Some(stack_top) = crate::kernel::task::get_task_stack_top(next_id) else {
+            crate::kernel::log::fail("timer", "preemption missing task stack top");
+            arch::halt();
+        };
+        crate::kernel::task::debug::set_debug_current_task_id(next_id);
+        crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
+
+        let Some(frame) = crate::kernel::task::get_task_resume_frame(next_id) else {
+            crate::kernel::log::fail("timer", "resume frame missing after decision");
+            arch::halt();
+        };
+
+        crate::arch::restore_verified_resume_frame(frame);
+    }
 
     if crate::kernel::ticks::is_test_complete() {
         cpu::disable_machine_timer_interrupt();

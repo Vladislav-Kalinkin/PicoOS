@@ -36,6 +36,12 @@ kernel_fault_guard_test = [
   "scheduler_fault_lifecycle_test",
 ]
 scheduler_verbose_dispatch_trace = []
+task_sleep_test = []
+kernel_log_scoped = []
+log_trap = []
+log_timer = []
+log_fault = []
+log_sleep = []
 
 two_task_resume_handoff_selftest = [
   "scheduler_reentry_selftest",

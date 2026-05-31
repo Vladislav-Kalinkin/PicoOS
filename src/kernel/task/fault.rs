@@ -46,7 +46,7 @@ pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<u
         crate::kernel::task::table::get_task_state(task_id),
         Some(crate::kernel::task::table::TaskState::Faulted)
     ) {
-        uart::write_line("!!! DOUBLE TRAP DETECTED (simulated) !!!");
+        crate::kernel::log::fail("fault", "DOUBLE TRAP DETECTED (simulated)");
         uart::write_str("  task already Faulted: ");
         crate::kernel::task::table::print_task_name_by_id(task_id);
         uart::write_line("");
@@ -57,7 +57,7 @@ pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<u
     let Some(fault_reason) =
         crate::kernel::task::table::record_task_fault(task_id, mcause, mepc, mtval)
     else {
-        uart::write_line("  record task fault: FAILED");
+        crate::kernel::log::fail("fault", "record task fault: FAILED");
         return None;
     };
 
@@ -77,7 +77,7 @@ pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<u
     uart::write_hex_u64(mtval);
     uart::write_line("");
 
-    uart::write_line("  record task fault: OK");
+    crate::kernel::log::ok("fault", "record task fault: OK");
 
     Some(task_id)
 }

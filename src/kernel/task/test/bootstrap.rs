@@ -1,7 +1,8 @@
 #[cfg(any(
     feature = "scheduler_fault_lifecycle_test",
     feature = "two_task_resume_handoff_test",
-    feature = "task_fault_test"
+    feature = "task_fault_test",
+    feature = "task_sleep_test"
 ))]
 use crate::drivers::uart;
 
@@ -22,6 +23,51 @@ pub fn print_task_zero_context_guard() {
     crate::drivers::uart::write_line("");
 
     if !ok {
+        crate::arch::halt();
+    }
+}
+
+#[cfg(feature = "task_sleep_test")]
+pub fn test_task_sleep_wakeup_table_selftest() {
+    uart::write_line("task sleep table selftest:");
+
+    let task_id = 1usize;
+
+    let blocked = crate::kernel::task::table::mark_task_blocked_until(task_id, 3);
+    uart::write_str("  mark blocked until tick=3: ");
+    crate::kernel::task::table::print_yes_no(blocked);
+    uart::write_line("");
+
+    let woke_early = crate::kernel::task::table::wake_sleeping_tasks(2);
+    uart::write_str("  woke at tick=2: ");
+    uart::write_dec_u64(woke_early as u64);
+    uart::write_line("");
+
+    let state_still_blocked = matches!(
+        crate::kernel::task::table::get_task_state(task_id),
+        Some(crate::kernel::task::table::TaskState::Blocked)
+    );
+    uart::write_str("  still blocked at tick=2: ");
+    crate::kernel::task::table::print_yes_no(state_still_blocked);
+    uart::write_line("");
+
+    let woke_on_time = crate::kernel::task::table::wake_sleeping_tasks(3);
+    uart::write_str("  woke at tick=3: ");
+    uart::write_dec_u64(woke_on_time as u64);
+    uart::write_line("");
+
+    let state_ready = matches!(
+        crate::kernel::task::table::get_task_state(task_id),
+        Some(crate::kernel::task::table::TaskState::Ready)
+    );
+    uart::write_str("  state Ready after wake: ");
+    crate::kernel::task::table::print_yes_no(state_ready);
+    uart::write_line("");
+
+    if blocked && woke_early == 0 && state_still_blocked && woke_on_time == 1 && state_ready {
+        uart::write_line("task sleep wake result: OK");
+    } else {
+        uart::write_line("task sleep wake result: FAILED");
         crate::arch::halt();
     }
 }

@@ -1,5 +1,6 @@
 pub mod banner;
 pub mod heap;
+pub mod log;
 pub mod memory;
 pub mod task;
 pub mod test;

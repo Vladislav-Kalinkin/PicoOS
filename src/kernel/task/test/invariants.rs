@@ -16,6 +16,9 @@ pub fn print_resume_eligibility_check(task_id: usize) {
         (Some(crate::kernel::task::table::TaskState::Faulted), Some(false)) => {
             uart::write_line("    task is faulted; resume disabled");
         }
+        (Some(crate::kernel::task::table::TaskState::Blocked), Some(false)) => {
+            uart::write_line("    task is blocked; resume disabled");
+        }
         _ => {
             uart::write_line("    task resume state is inconsistent");
         }
@@ -75,5 +78,35 @@ pub fn print_cpu_context_consistency_check(task_id: usize) {
         _ => {
             uart::write_line("    consistency result: FAILED");
         }
+    }
+}
+
+pub fn print_illegal_transition_checks(task_id: usize) {
+    use crate::kernel::task::table::TaskLifecycleTransition::{Exit, Fault, Yield};
+    use crate::kernel::task::table::TaskState;
+
+    uart::write_line("  lifecycle transition guard check:");
+
+    let Some(state) = crate::kernel::task::table::get_task_state(task_id) else {
+        uart::write_line("    state unknown");
+        return;
+    };
+
+    let yield_allowed = crate::kernel::task::table::can_apply_task_transition(task_id, Yield);
+    let exit_allowed = crate::kernel::task::table::can_apply_task_transition(task_id, Exit);
+    let fault_allowed = crate::kernel::task::table::can_apply_task_transition(task_id, Fault);
+
+    let guard_ok = match state {
+        TaskState::Finished | TaskState::Faulted => {
+            !yield_allowed && !exit_allowed && !fault_allowed
+        }
+        _ => true,
+    };
+
+    uart::write_str("    illegal transitions blocked: ");
+    if guard_ok {
+        uart::write_line("OK");
+    } else {
+        uart::write_line("FAILED");
     }
 }

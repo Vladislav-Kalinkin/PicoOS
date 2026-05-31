@@ -127,6 +127,28 @@ pub fn yield_now() {
 }
 
 #[allow(dead_code)]
+pub fn task_sleep_ticks(ticks: u64) {
+    let task_id = crate::kernel::task::debug::debug_current_task_id();
+    let wake_tick = crate::kernel::ticks::get().saturating_add(ticks.max(1));
+
+    crate::kernel::log::info("sleep", "task requested timed sleep");
+
+    if !crate::kernel::task::table::mark_task_blocked_until(task_id, wake_tick) {
+        crate::kernel::log::fail("sleep", "failed to mark task Blocked");
+        crate::arch::halt();
+    }
+
+    set_debug_task_return_kind(TaskReturnKind::Sleep);
+
+    let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
+    let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+
+    unsafe {
+        crate::arch::task_yield_boundary(kernel_sp, return_pc);
+    }
+}
+
+#[allow(dead_code)]
 fn print_returning_yield_task_layer_precheck(
     task_sp: u64,
     resume_pc: u64,

@@ -32,7 +32,24 @@ pub enum TaskReturnKind {
     None,
     Exit,
     Yield,
+    Sleep,
     Fault,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum TaskLifecycleTransition {
+    Start,
+    Yield,
+    Sleep,
+    Exit,
+    Fault,
+}
+
+#[derive(Clone, Copy)]
+pub struct TaskReturnContext {
+    pub task_sp: u64,
+    pub kernel_sp: u64,
+    pub kernel_return_pc: u64,
 }
 
 #[allow(dead_code)]
@@ -98,6 +115,7 @@ pub struct Task {
     pub last_fault_mcause: Option<u64>,
     pub last_fault_mepc: Option<u64>,
     pub last_fault_mtval: Option<u64>,
+    pub sleep_until_tick: Option<u64>,
 }
 
 impl Task {
@@ -124,6 +142,7 @@ impl Task {
             last_fault_mcause: None,
             last_fault_mepc: None,
             last_fault_mtval: None,
+            sleep_until_tick: None,
         }
     }
 }
@@ -193,6 +212,7 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
                 TASKS[slot].has_started = false;
                 TASKS[slot].can_resume = false;
                 TASKS[slot].last_return_kind = TaskReturnKind::None;
+                TASKS[slot].sleep_until_tick = None;
 
                 copy_name(&mut TASKS[slot].name, name);
 
@@ -466,6 +486,39 @@ pub fn mark_task_running(id: usize) -> bool {
     }
 }
 
+fn can_transition_from(state: TaskState, transition: TaskLifecycleTransition) -> bool {
+    match transition {
+        TaskLifecycleTransition::Start => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Yield => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Sleep => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Exit => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Fault => matches!(state, TaskState::Ready | TaskState::Running),
+    }
+}
+
+#[allow(dead_code)]
+pub fn can_apply_task_transition(id: usize, transition: TaskLifecycleTransition) -> bool {
+    get_task_state(id)
+        .map(|state| can_transition_from(state, transition))
+        .unwrap_or(false)
+}
+
+#[allow(dead_code)]
+pub fn mark_task_started(id: usize) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
+    unsafe {
+        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Start) {
+            return false;
+        }
+        TASKS[slot].has_started = true;
+    }
+
+    true
+}
+
 #[allow(clippy::needless_range_loop)]
 pub fn update_context(id: usize, saved_sp: u64, saved_pc: u64) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
@@ -484,15 +537,7 @@ pub fn update_context(id: usize, saved_sp: u64, saved_pc: u64) -> bool {
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_started(id: usize) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].has_started = true;
-    }
-
-    true
+    mark_task_started(id)
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -762,6 +807,7 @@ pub fn print_task_return_kind(kind: TaskReturnKind) {
         TaskReturnKind::None => uart::write_str("None"),
         TaskReturnKind::Exit => uart::write_str("Exit"),
         TaskReturnKind::Yield => uart::write_str("Yield"),
+        TaskReturnKind::Sleep => uart::write_str("Sleep"),
         TaskReturnKind::Fault => uart::write_str("Fault"),
     }
 }
@@ -792,6 +838,44 @@ pub fn set_task_last_return_context(
     }
 
     false
+}
+
+#[allow(dead_code)]
+pub fn apply_task_return_transition(
+    task_id: usize,
+    kind: TaskReturnKind,
+    context: TaskReturnContext,
+    cpu_context: TaskCpuContext,
+) -> bool {
+    if !set_task_last_return_context(
+        task_id,
+        context.task_sp,
+        context.kernel_sp,
+        context.kernel_return_pc,
+    ) {
+        return false;
+    }
+
+    if !set_task_cpu_context(task_id, cpu_context) {
+        return false;
+    }
+
+    set_last_returned_task_id(task_id);
+
+    match kind {
+        TaskReturnKind::Yield => mark_task_ready_after_yield(task_id),
+        TaskReturnKind::Sleep => mark_task_blocked_for_sleep(task_id),
+        TaskReturnKind::Exit => mark_task_finished(task_id),
+        TaskReturnKind::Fault => {
+            if matches!(get_task_state(task_id), Some(TaskState::Faulted)) {
+                set_task_return_kind(task_id, TaskReturnKind::Fault)
+                    && set_task_can_resume(task_id, false)
+            } else {
+                mark_task_faulted(task_id)
+            }
+        }
+        TaskReturnKind::None => set_task_return_kind(task_id, kind),
+    }
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -1346,50 +1430,125 @@ pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_finished(id: usize) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].state = TaskState::Finished;
-                TASKS[slot].last_return_kind = TaskReturnKind::Exit;
-                TASKS[slot].can_resume = false;
-                return true;
-            }
+        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Exit) {
+            return false;
         }
+        TASKS[slot].state = TaskState::Finished;
+        TASKS[slot].last_return_kind = TaskReturnKind::Exit;
+        TASKS[slot].can_resume = false;
     }
 
-    false
+    true
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_ready_after_yield(id: usize) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
+    unsafe {
+        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Yield) {
+            return false;
+        }
+        TASKS[slot].state = TaskState::Ready;
+        TASKS[slot].last_return_kind = TaskReturnKind::Yield;
+        TASKS[slot].can_resume = true;
+        TASKS[slot].sleep_until_tick = None;
+    }
+
+    true
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn mark_task_blocked_until(id: usize, wake_tick: u64) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
+    unsafe {
+        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Sleep) {
+            return false;
+        }
+
+        TASKS[slot].state = TaskState::Blocked;
+        TASKS[slot].last_return_kind = TaskReturnKind::Sleep;
+        TASKS[slot].can_resume = false;
+        TASKS[slot].sleep_until_tick = Some(wake_tick);
+    }
+
+    true
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn mark_task_blocked_for_sleep(id: usize) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
+    unsafe {
+        if !matches!(TASKS[slot].state, TaskState::Blocked) {
+            return false;
+        }
+
+        TASKS[slot].last_return_kind = TaskReturnKind::Sleep;
+        TASKS[slot].can_resume = false;
+    }
+
+    true
+}
+
+#[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
+    let mut woke = 0;
+
     unsafe {
         for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
+            if !matches!(TASKS[slot].state, TaskState::Blocked) {
+                continue;
+            }
+
+            let Some(wake_tick) = TASKS[slot].sleep_until_tick else {
+                continue;
+            };
+
+            if current_tick >= wake_tick {
                 TASKS[slot].state = TaskState::Ready;
-                TASKS[slot].last_return_kind = TaskReturnKind::Yield;
-                TASKS[slot].can_resume = true;
-                return true;
+                TASKS[slot].last_return_kind = TaskReturnKind::None;
+                TASKS[slot].can_resume = false;
+                TASKS[slot].sleep_until_tick = None;
+                woke += 1;
             }
         }
     }
 
-    false
+    woke
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_faulted(id: usize) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].state = TaskState::Faulted;
-                TASKS[slot].last_return_kind = TaskReturnKind::Fault;
-                TASKS[slot].can_resume = false;
-                return true;
-            }
+        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Fault) {
+            return false;
         }
+        TASKS[slot].state = TaskState::Faulted;
+        TASKS[slot].last_return_kind = TaskReturnKind::Fault;
+        TASKS[slot].can_resume = false;
     }
 
-    false
+    true
 }
