@@ -76,5 +76,12 @@ echo "== Clippy RISC-V kernel fault guard test =="
 cargo clippy --features "kernel_fault_guard_test" -- -D warnings
 
 echo
+echo "== QEMU marker tests =="
+scripts/test-task-resume-selftest.sh
+scripts/test-two-task-handoff-riscv.sh
+scripts/test-scheduler-fault-lifecycle-riscv.sh
+scripts/test-kernel-fault-guard-riscv.sh
+
+echo
 echo "== All checks passed =="
 cargo clean

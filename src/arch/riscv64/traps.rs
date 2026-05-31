@@ -71,7 +71,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                     uart::write_line("");
                     uart::write_line("PicoOS milestone:");
                     uart::write_line("  baseline: 0.1.0");
-                    uart::write_line("  current: 0.1.33");
+                    uart::write_line("  current: 0.1.64");
                     uart::write_line("  task fault state: OK");
                     uart::write_line("  scheduler skips faulted tasks: OK");
                     uart::write_line("  trap-to-task-fault skeleton: OK");
