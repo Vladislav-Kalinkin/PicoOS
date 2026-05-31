@@ -436,49 +436,13 @@ pub fn get_task_saved_pc(id: usize) -> Option<u64> {
 
 #[allow(clippy::needless_range_loop)]
 pub fn find_next_ready_after(current_id: Option<usize>) -> Option<usize> {
-    let start_slot = match current_id {
-        Some(id) => find_slot_by_id(id).map(|slot| slot + 1).unwrap_or(0),
-
-        None => 0,
-    };
-
-    for offset in 0..MAX_TASKS {
-        let slot = (start_slot + offset) % MAX_TASKS;
-
-        unsafe {
-            if matches!(TASKS[slot].state, TaskState::Ready) {
-                return Some(TASKS[slot].id);
-            }
-        }
-    }
-
-    None
+    find_next_task_after(current_id, |task| matches!(task.state, TaskState::Ready))
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn find_next_dispatchable_after(current_id: Option<usize>) -> Option<usize> {
-    let start_slot = match current_id {
-        Some(id) => find_slot_by_id(id).map(|slot| slot + 1).unwrap_or(0),
-        None => 0,
-    };
-
-    for offset in 0..MAX_TASKS {
-        let slot = (start_slot + offset) % MAX_TASKS;
-
-        unsafe {
-            if matches!(TASKS[slot].state, TaskState::Empty) {
-                continue;
-            }
-
-            let task_id = TASKS[slot].id;
-            if is_dispatchable_task(task_id) {
-                return Some(task_id);
-            }
-        }
-    }
-
-    None
+    find_next_task_after(current_id, |task| is_dispatchable_task(task.id))
 }
 
 #[allow(dead_code)]
@@ -683,6 +647,32 @@ fn find_slot_by_id(id: usize) -> Option<usize> {
             if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
                 return Some(slot);
             }
+        }
+    }
+
+    None
+}
+
+#[allow(clippy::needless_range_loop)]
+fn find_next_task_after<F>(current_id: Option<usize>, mut accept: F) -> Option<usize>
+where
+    F: FnMut(Task) -> bool,
+{
+    let start_slot = match current_id {
+        Some(id) => find_slot_by_id(id).map(|slot| slot + 1).unwrap_or(0),
+        None => 0,
+    };
+
+    for offset in 0..MAX_TASKS {
+        let slot = (start_slot + offset) % MAX_TASKS;
+
+        let task = unsafe { TASKS[slot] };
+        if matches!(task.state, TaskState::Empty) {
+            continue;
+        }
+
+        if accept(task) {
+            return Some(task.id);
         }
     }
 
