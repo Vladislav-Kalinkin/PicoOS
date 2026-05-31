@@ -410,28 +410,14 @@ pub fn get_task_initial_pc(id: usize) -> Option<u64> {
 
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_saved_sp(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].saved_sp);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].saved_sp })
 }
 
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_saved_pc(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].saved_pc);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].saved_pc })
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -482,46 +468,39 @@ pub fn mark_task_running(id: usize) -> bool {
 
 #[allow(clippy::needless_range_loop)]
 pub fn update_context(id: usize, saved_sp: u64, saved_pc: u64) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].saved_sp = saved_sp;
-                TASKS[slot].saved_pc = saved_pc;
-                TASKS[slot].has_started = true;
-                return true;
-            }
-        }
+        TASKS[slot].saved_sp = saved_sp;
+        TASKS[slot].saved_pc = saved_pc;
+        TASKS[slot].has_started = true;
     }
 
-    false
+    true
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_started(id: usize) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].has_started = true;
-                return true;
-            }
-        }
+        TASKS[slot].has_started = true;
     }
 
-    false
+    true
 }
 
 #[allow(clippy::needless_range_loop)]
 pub fn has_started(id: usize) -> bool {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return TASKS[slot].has_started;
-            }
-        }
-    }
-
-    false
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+    unsafe { TASKS[slot].has_started }
 }
 
 pub fn print_task_name_by_id(id: usize) {
@@ -733,29 +712,21 @@ fn print_state(state: TaskState) {
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn set_task_state(id: usize, state: TaskState) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].state = state;
-                return true;
-            }
-        }
+        TASKS[slot].state = state;
     }
 
-    false
+    true
 }
 
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_state(id: usize) -> Option<TaskState> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].state);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].state })
 }
 
 pub fn print_task_state_by_id(id: usize) {
@@ -782,15 +753,8 @@ pub fn set_task_return_kind(id: usize, kind: TaskReturnKind) -> bool {
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_return_kind(id: usize) -> Option<TaskReturnKind> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].last_return_kind);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].last_return_kind })
 }
 
 pub fn print_task_return_kind(kind: TaskReturnKind) {
@@ -861,57 +825,29 @@ pub fn set_task_can_resume(id: usize, can_resume: bool) -> bool {
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn can_task_resume(id: usize) -> Option<bool> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].can_resume);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].can_resume })
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_last_task_sp(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].last_task_sp);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].last_task_sp })
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_last_kernel_sp(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].last_kernel_sp);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].last_kernel_sp })
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_last_kernel_return_pc(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].last_kernel_return_pc);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].last_kernel_return_pc })
 }
 
 #[allow(dead_code)]
@@ -946,32 +882,24 @@ pub fn print_yes_no(value: bool) {
 
 #[allow(clippy::needless_range_loop)]
 pub fn set_task_cpu_context(id: usize, context: TaskCpuContext) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].cpu_context = context;
-                TASKS[slot].saved_sp = context.sp;
-                TASKS[slot].saved_pc = context.return_pc;
-                return true;
-            }
-        }
+        TASKS[slot].cpu_context = context;
+        TASKS[slot].saved_sp = context.sp;
+        TASKS[slot].saved_pc = context.return_pc;
     }
 
-    false
+    true
 }
 
 #[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_cpu_context(id: usize) -> Option<TaskCpuContext> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].cpu_context);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].cpu_context })
 }
 
 #[allow(dead_code)]
