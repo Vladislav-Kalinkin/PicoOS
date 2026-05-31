@@ -450,6 +450,18 @@ pub fn test_resume_restore() {
     uart::write_line("restore guarded precheck passed");
     uart::write_line("calling arch restore_verified_resume_frame...");
 
+    set_debug_current_task_id(task_id);
+    match (
+        crate::kernel::task::table::get_task_stack_start(task_id),
+        crate::kernel::task::table::get_task_stack_top(task_id),
+    ) {
+        (Some(start), Some(top)) => set_debug_current_stack_bounds(start, top),
+        _ => {
+            uart::write_line("restore aborted: missing task stack bounds");
+            crate::arch::halt();
+        }
+    }
+
     unsafe {
         crate::arch::restore_verified_resume_frame(frame);
     }
@@ -1687,7 +1699,7 @@ pub fn test_kernel_fault_guard() -> ! {
     crate::drivers::uart::write_line("kernel fault guard test:");
     crate::drivers::uart::write_line("triggering real trap from kernel context");
 
-    crate::kernel::task::debug::set_debug_current_task_id(0);
+    crate::kernel::task::debug::clear_debug_current_task_id();
 
     unsafe {
         core::arch::asm!("ebreak", options(nomem, nostack, preserves_flags));

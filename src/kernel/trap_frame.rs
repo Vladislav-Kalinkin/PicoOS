@@ -1,5 +1,7 @@
 #[repr(C)]
 pub struct Riscv64TrapFrame {
+    pub sp: u64,
+
     pub ra: u64,
 
     pub t0: u64,

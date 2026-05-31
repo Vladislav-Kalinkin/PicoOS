@@ -8,6 +8,7 @@ static mut DEBUG_TASK_RUN_STAGE: u64 = 0;
 static mut DEBUG_TASK_RETURN_KIND: crate::kernel::task::table::TaskReturnKind =
     crate::kernel::task::table::TaskReturnKind::None;
 static mut DEBUG_CURRENT_TASK_ID: usize = 0;
+static mut DEBUG_CURRENT_TASK_ACTIVE: bool = false;
 static mut DEBUG_LAST_TASK_SP: u64 = 0;
 static mut DEBUG_TASK_RESUME_PC: u64 = 0;
 
@@ -86,6 +87,15 @@ pub fn debug_task_return_kind() -> crate::kernel::task::table::TaskReturnKind {
 pub fn set_debug_current_task_id(id: usize) {
     unsafe {
         DEBUG_CURRENT_TASK_ID = id;
+        DEBUG_CURRENT_TASK_ACTIVE = true;
+    }
+}
+
+#[allow(dead_code)]
+pub fn clear_debug_current_task_id() {
+    unsafe {
+        DEBUG_CURRENT_TASK_ID = 0;
+        DEBUG_CURRENT_TASK_ACTIVE = false;
     }
 }
 
@@ -117,9 +127,7 @@ pub enum TrapExecutionContext {
 }
 
 pub fn current_trap_execution_context() -> TrapExecutionContext {
-    let task_id = debug_current_task_id();
-
-    if task_id != 0 {
+    if unsafe { DEBUG_CURRENT_TASK_ACTIVE } {
         TrapExecutionContext::Task
     } else {
         TrapExecutionContext::Kernel
@@ -147,6 +155,7 @@ pub extern "C" fn task_return_point() -> ! {
     uart::write_line("");
 
     crate::kernel::task::test::handle_task_return_for_debug_test();
+    clear_debug_current_task_id();
 
     match debug_task_run_stage() {
         #[cfg(feature = "task_yield_test")]

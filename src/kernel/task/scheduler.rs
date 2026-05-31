@@ -120,9 +120,7 @@ pub fn switch_to_idle() {
 
 #[allow(dead_code)]
 pub fn set_current_task(id: usize) {
-    unsafe {
-        CURRENT_TASK_ID = Some(id);
-    }
+    force_current_task(id);
 }
 
 #[cfg(feature = "scheduler_dispatch_test")]

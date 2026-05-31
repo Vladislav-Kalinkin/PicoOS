@@ -53,6 +53,7 @@ unsafe extern "C" {
 
 unsafe extern "C" {
     static trap_vector: u8;
+    static __trap_stack_top: u8;
 }
 
 #[inline(always)]
@@ -105,12 +106,22 @@ pub fn last_riscv_yield_context() -> RiscvYieldContext {
 
 pub fn init_exceptions() {
     let trap_addr = unsafe { &trap_vector as *const u8 as u64 };
+    let trap_stack_top = trap_stack_top();
 
     cpu::set_mtvec(trap_addr);
+    cpu::set_mscratch(trap_stack_top);
 
     crate::drivers::uart::write_str("mtvec: ");
     crate::drivers::uart::write_hex_u64(cpu::mtvec());
     crate::drivers::uart::write_line("");
+
+    crate::drivers::uart::write_str("trap stack top: ");
+    crate::drivers::uart::write_hex_u64(trap_stack_top);
+    crate::drivers::uart::write_line("");
+}
+
+fn trap_stack_top() -> u64 {
+    unsafe { &__trap_stack_top as *const u8 as u64 }
 }
 
 pub fn enable_irq() {
@@ -200,6 +211,19 @@ pub unsafe fn return_to_kernel_stack(kernel_sp: u64, return_pc: u64) -> ! {
         return_pc = in(reg) return_pc,
         options(noreturn)
         );
+    }
+}
+
+pub fn return_to_kernel_stack_checked(kernel_sp: u64, return_pc: u64) -> ! {
+    if kernel_sp == 0 || !crate::kernel::memory::is_inside_kernel_text(return_pc) {
+        crate::drivers::uart::write_line("invalid kernel return context");
+        crate::arch::halt();
+    }
+
+    cpu::set_mscratch(trap_stack_top());
+
+    unsafe {
+        return_to_kernel_stack(kernel_sp, return_pc);
     }
 }
 
@@ -351,7 +375,7 @@ pub unsafe fn yield_to_kernel_raw(
 
     crate::kernel::task::debug::print_debug_task_resume_context();
 
-    return_to_kernel_stack(kernel_sp, kernel_return_pc);
+    return_to_kernel_stack_checked(kernel_sp, kernel_return_pc);
 }
 
 #[allow(dead_code)]

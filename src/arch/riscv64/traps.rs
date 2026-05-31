@@ -109,7 +109,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
                 uart::write_line("  record task fault: OK");
 
-                let task_sp = frame as u64;
+                let task_sp = interrupted_sp(frame);
                 let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
                 let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
 
@@ -132,9 +132,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
                 uart::write_line("trap handler action: return to kernel task return path");
 
-                unsafe {
-                    crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
-                }
+                crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
             }
         }
     }
@@ -149,7 +147,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     timer::disarm_timer();
 
-    let saved_sp = frame as u64;
+    let saved_sp = interrupted_sp(frame);
     let saved_pc = cpu::mepc();
 
     let saved_task = crate::kernel::task::scheduler::save_current_context(saved_sp, saved_pc);
@@ -189,6 +187,10 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     }
 
     timer::arm_timer_hz(TIMER_HZ);
+}
+
+fn interrupted_sp(frame: *const Riscv64TrapFrame) -> u64 {
+    unsafe { (*frame).sp }
 }
 
 fn print_trap_cause(cause: u64) {

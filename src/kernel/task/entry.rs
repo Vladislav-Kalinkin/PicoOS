@@ -50,9 +50,7 @@ pub fn task_exit() -> ! {
 
     set_debug_task_return_kind(TaskReturnKind::Exit);
 
-    unsafe {
-        crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
-    }
+    crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
 }
 
 #[allow(dead_code)]
@@ -81,9 +79,7 @@ pub fn task_fault() -> ! {
 
     set_debug_task_return_kind(TaskReturnKind::Fault);
 
-    unsafe {
-        crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
-    }
+    crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
 }
 
 #[allow(dead_code)]
@@ -115,9 +111,7 @@ pub fn simulated_task_trap_fault() -> ! {
         crate::kernel::task::table::TaskReturnKind::Fault,
     );
 
-    unsafe {
-        crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
-    }
+    crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
 }
 
 #[allow(dead_code)]
@@ -297,9 +291,7 @@ pub fn simulated_real_trap_fault() -> ! {
                 crate::kernel::task::table::TaskReturnKind::Fault,
             );
 
-            unsafe {
-                crate::arch::return_to_kernel_stack(kernel_sp, return_pc);
-            }
+            crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
         }
     }
 }

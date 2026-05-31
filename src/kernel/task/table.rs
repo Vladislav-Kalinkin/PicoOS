@@ -457,21 +457,28 @@ pub fn set_running(id: usize) {
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_running(id: usize) -> bool {
     unsafe {
+        let Some(target_slot) = (0..MAX_TASKS).find(|slot| {
+            !matches!(TASKS[*slot].state, TaskState::Empty) && TASKS[*slot].id == id
+        }) else {
+            return false;
+        };
+
+        if !matches!(
+            TASKS[target_slot].state,
+            TaskState::Ready | TaskState::Running
+        ) {
+            return false;
+        }
+
         for slot in 0..MAX_TASKS {
             if matches!(TASKS[slot].state, TaskState::Running) && TASKS[slot].id != id {
                 TASKS[slot].state = TaskState::Ready;
             }
         }
 
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].state = TaskState::Running;
-                return true;
-            }
-        }
+        TASKS[target_slot].state = TaskState::Running;
+        true
     }
-
-    false
 }
 
 #[allow(clippy::needless_range_loop)]

@@ -132,6 +132,17 @@ pub fn set_mtvec(addr: u64) {
 }
 
 #[inline(always)]
+pub fn set_mscratch(value: u64) {
+    unsafe {
+        asm!(
+            "csrw mscratch, {0}",
+            in(reg) value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
+#[inline(always)]
 pub fn mtval() -> u64 {
     let value: u64;
 
