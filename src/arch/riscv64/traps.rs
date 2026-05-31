@@ -55,6 +55,17 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
                 #[cfg(feature = "kernel_fault_guard_test")]
                 {
+                    let frame_on_trap_stack = arch::is_trap_stack_addr(frame as u64);
+
+                    uart::write_str("trap frame on trap stack: ");
+                    crate::kernel::task::table::print_yes_no(frame_on_trap_stack);
+                    uart::write_line("");
+
+                    if !frame_on_trap_stack {
+                        uart::write_line("kernel fault guard result: FAILED");
+                        arch::halt();
+                    }
+
                     uart::write_line("");
                     uart::write_line("kernel fault guard result: OK");
                     uart::write_line("");
@@ -66,6 +77,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                     uart::write_line("  trap-to-task-fault skeleton: OK");
                     uart::write_line("  real trap handler classification: OK");
                     uart::write_line("  real trap handler task-fault return path: OK");
+                    uart::write_line("  trap stack isolation: OK");
                     uart::write_line("  kernel fault guard: OK");
                 }
 

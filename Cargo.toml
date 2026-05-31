@@ -32,7 +32,9 @@ scheduler_run_test = []
 scheduler_reentry_test = []
 two_task_resume_handoff_test = []
 task_fault_test = []
-kernel_fault_guard_test = []
+kernel_fault_guard_test = [
+  "scheduler_fault_lifecycle_test",
+]
 scheduler_verbose_dispatch_trace = []
 
 two_task_resume_handoff_selftest = [

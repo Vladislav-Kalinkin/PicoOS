@@ -23,6 +23,7 @@ pub fn test_tasks() {
     crate::kernel::task::table::init();
 
     let _ = create_task("idle", idle_task);
+    print_task_zero_context_guard();
     let _ = create_task("worker-a", worker_a_task);
     let _ = create_task("worker-b", worker_b_task);
 
@@ -33,6 +34,7 @@ pub fn test_tasks() {
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
     let _ = create_task("idle", idle_task);
+    print_task_zero_context_guard();
 
     #[cfg(feature = "scheduler_fault_lifecycle_test")]
     {
@@ -1157,6 +1159,27 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("finished", id)
 }
 
+fn print_task_zero_context_guard() {
+    use crate::kernel::task::debug::TrapExecutionContext;
+
+    crate::kernel::task::debug::set_debug_current_task_id(0);
+
+    let ok = matches!(
+        crate::kernel::task::debug::current_trap_execution_context(),
+        TrapExecutionContext::Task
+    );
+
+    crate::kernel::task::debug::clear_debug_current_task_id();
+
+    crate::drivers::uart::write_str("task id 0 context guard: ");
+    crate::kernel::task::table::print_yes_no(ok);
+    crate::drivers::uart::write_line("");
+
+    if !ok {
+        crate::arch::halt();
+    }
+}
+
 #[cfg(all(
     target_arch = "riscv64",
     feature = "real_resume_restore_jump",
@@ -1266,6 +1289,7 @@ fn print_resume_candidate_header() {
 #[cfg(feature = "scheduler_fault_lifecycle_test")]
 fn print_terminal_task_dispatch_guard(label: &str, id: usize) -> bool {
     let snapshot = crate::kernel::task::table::get_terminal_task_dispatch_invariants(id);
+    let running_blocked = !crate::kernel::task::table::mark_task_running(id);
 
     crate::drivers::uart::write_str("  ");
     crate::drivers::uart::write_str(label);
@@ -1305,14 +1329,20 @@ fn print_terminal_task_dispatch_guard(label: &str, id: usize) -> bool {
     crate::kernel::task::table::print_yes_no(!snapshot.dispatchable);
     crate::drivers::uart::write_line("");
 
+    crate::drivers::uart::write_str("    force running blocked: ");
+    crate::kernel::task::table::print_yes_no(running_blocked);
+    crate::drivers::uart::write_line("");
+
+    let ok = snapshot.result && running_blocked;
+
     crate::drivers::uart::write_str("    result: ");
-    if snapshot.result {
+    if ok {
         crate::drivers::uart::write_line("OK");
     } else {
         crate::drivers::uart::write_line("FAILED");
     }
 
-    snapshot.result
+    ok
 }
 
 #[cfg(feature = "resume_candidate_test")]

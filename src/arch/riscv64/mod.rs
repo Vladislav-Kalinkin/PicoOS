@@ -124,6 +124,13 @@ fn trap_stack_top() -> u64 {
     unsafe { &__trap_stack_top as *const u8 as u64 }
 }
 
+#[cfg(feature = "kernel_fault_guard_test")]
+pub fn is_trap_stack_addr(addr: u64) -> bool {
+    let top = trap_stack_top();
+
+    addr >= top - 4096 && addr < top
+}
+
 pub fn enable_irq() {
     cpu::enable_machine_interrupts();
 }
