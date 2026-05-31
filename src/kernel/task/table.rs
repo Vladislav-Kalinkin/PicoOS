@@ -457,9 +457,9 @@ pub fn set_running(id: usize) {
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_running(id: usize) -> bool {
     unsafe {
-        let Some(target_slot) = (0..MAX_TASKS).find(|slot| {
-            !matches!(TASKS[*slot].state, TaskState::Empty) && TASKS[*slot].id == id
-        }) else {
+        let Some(target_slot) = (0..MAX_TASKS)
+            .find(|slot| !matches!(TASKS[*slot].state, TaskState::Empty) && TASKS[*slot].id == id)
+        else {
             return false;
         };
 
@@ -998,10 +998,18 @@ pub fn is_task_running(id: usize) -> bool {
 #[allow(dead_code)]
 pub fn is_ready_running_faulted_finished_invariant_ok(id: usize) -> bool {
     match get_task_state(id) {
-        Some(TaskState::Ready) => !is_task_running(id) && !is_task_faulted(id) && !is_task_finished(id),
-        Some(TaskState::Running) => !is_task_ready(id) && !is_task_faulted(id) && !is_task_finished(id),
-        Some(TaskState::Faulted) => !is_task_ready(id) && !is_task_running(id) && !is_task_finished(id),
-        Some(TaskState::Finished) => !is_task_ready(id) && !is_task_running(id) && !is_task_faulted(id),
+        Some(TaskState::Ready) => {
+            !is_task_running(id) && !is_task_faulted(id) && !is_task_finished(id)
+        }
+        Some(TaskState::Running) => {
+            !is_task_ready(id) && !is_task_faulted(id) && !is_task_finished(id)
+        }
+        Some(TaskState::Faulted) => {
+            !is_task_ready(id) && !is_task_running(id) && !is_task_finished(id)
+        }
+        Some(TaskState::Finished) => {
+            !is_task_ready(id) && !is_task_running(id) && !is_task_faulted(id)
+        }
         _ => false,
     }
 }
@@ -1051,9 +1059,7 @@ pub fn is_resumable_task(id: usize) -> bool {
 
 #[allow(dead_code)]
 pub fn is_fresh_ready_task(id: usize) -> bool {
-    can_dispatch_from_ready(id)
-        && !has_started(id)
-        && matches!(can_task_resume(id), Some(false))
+    can_dispatch_from_ready(id) && !has_started(id) && matches!(can_task_resume(id), Some(false))
 }
 
 #[allow(dead_code)]

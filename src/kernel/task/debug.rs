@@ -7,8 +7,7 @@ static mut DEBUG_CURRENT_STACK_TOP: u64 = 0;
 static mut DEBUG_TASK_RUN_STAGE: u64 = 0;
 static mut DEBUG_TASK_RETURN_KIND: crate::kernel::task::table::TaskReturnKind =
     crate::kernel::task::table::TaskReturnKind::None;
-static mut DEBUG_CURRENT_TASK_ID: usize = 0;
-static mut DEBUG_CURRENT_TASK_ACTIVE: bool = false;
+static mut DEBUG_CURRENT_TASK: Option<usize> = None;
 static mut DEBUG_LAST_TASK_SP: u64 = 0;
 static mut DEBUG_TASK_RESUME_PC: u64 = 0;
 
@@ -86,21 +85,20 @@ pub fn debug_task_return_kind() -> crate::kernel::task::table::TaskReturnKind {
 #[allow(dead_code)]
 pub fn set_debug_current_task_id(id: usize) {
     unsafe {
-        DEBUG_CURRENT_TASK_ID = id;
-        DEBUG_CURRENT_TASK_ACTIVE = true;
+        DEBUG_CURRENT_TASK = Some(id);
     }
 }
 
 #[allow(dead_code)]
 pub fn clear_debug_current_task_id() {
     unsafe {
-        DEBUG_CURRENT_TASK_ID = 0;
-        DEBUG_CURRENT_TASK_ACTIVE = false;
+        DEBUG_CURRENT_TASK = None;
     }
 }
 
 pub fn debug_current_task_id() -> usize {
-    unsafe { DEBUG_CURRENT_TASK_ID }
+    let task = unsafe { DEBUG_CURRENT_TASK };
+    task.unwrap_or(0)
 }
 
 #[allow(dead_code)]
@@ -127,7 +125,8 @@ pub enum TrapExecutionContext {
 }
 
 pub fn current_trap_execution_context() -> TrapExecutionContext {
-    if unsafe { DEBUG_CURRENT_TASK_ACTIVE } {
+    let task = unsafe { DEBUG_CURRENT_TASK };
+    if task.is_some() {
         TrapExecutionContext::Task
     } else {
         TrapExecutionContext::Kernel

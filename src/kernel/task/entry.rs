@@ -61,8 +61,6 @@ pub fn task_fault() -> ! {
     let kernel_sp = debug_kernel_sp_before_task();
     let return_pc = debug_kernel_return_pc();
 
-    set_debug_last_task_sp(current_sp);
-
     uart::write_str("task_fault current SP: ");
     uart::write_hex_u64(current_sp);
     uart::write_line("");
@@ -77,9 +75,7 @@ pub fn task_fault() -> ! {
 
     uart::write_line("returning to kernel stack after task fault...");
 
-    set_debug_task_return_kind(TaskReturnKind::Fault);
-
-    crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
+    crate::kernel::task::fault::return_current_task_fault(current_sp, kernel_sp, return_pc);
 }
 
 #[allow(dead_code)]
@@ -89,8 +85,6 @@ pub fn simulated_task_trap_fault() -> ! {
     let current_sp = crate::arch::stack_pointer();
     let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
     let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
-
-    crate::kernel::task::debug::set_debug_last_task_sp(current_sp);
 
     uart::write_str("simulated trap current SP: ");
     uart::write_hex_u64(current_sp);
@@ -107,11 +101,7 @@ pub fn simulated_task_trap_fault() -> ! {
     uart::write_line("simulated trap classified as task fault");
     uart::write_line("returning to kernel stack after simulated task trap...");
 
-    crate::kernel::task::debug::set_debug_task_return_kind(
-        crate::kernel::task::table::TaskReturnKind::Fault,
-    );
-
-    crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
+    crate::kernel::task::fault::return_current_task_fault(current_sp, kernel_sp, return_pc);
 }
 
 #[allow(dead_code)]
@@ -209,53 +199,13 @@ pub fn simulated_real_trap_fault() -> ! {
         crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
             uart::write_line("simulated real trap result: task fault");
 
-            let task_id = crate::kernel::task::debug::debug_current_task_id();
-
-            // === ЗАЩИТА ОТ INFINITE TRAP LOOP ===
-            if matches!(
-                crate::kernel::task::table::get_task_state(task_id),
-                Some(crate::kernel::task::table::TaskState::Faulted)
-            ) {
-                uart::write_line("!!! DOUBLE TRAP DETECTED (simulated) !!!");
-                uart::write_str("  task already Faulted: ");
-                crate::kernel::task::table::print_task_name_by_id(task_id);
-                uart::write_line("");
-                uart::write_line("  system halted to prevent infinite trap loop");
-                crate::arch::halt();
-            }
-
-            // === НОВОЕ: читаем регистры CPU и сохраняем причину fault ===
-            // В симуляции mcause/mepc/mtval могут быть нулевыми или синтетическими,
-            // но мы обязаны пройти тот же путь, что и реальный trap handler.
-            let fault_mcause = crate::arch::cpu::mcause();
-            let fault_mepc = crate::arch::cpu::mepc();
-            let fault_mtval = crate::arch::cpu::mtval();
-
-            let Some(fault_reason) = crate::kernel::task::table::record_task_fault(
-                task_id,
-                fault_mcause,
-                fault_mepc,
-                fault_mtval,
+            let Some(task_id) = crate::kernel::task::fault::record_current_task_fault(
+                crate::arch::cpu::mcause(),
+                crate::arch::cpu::mepc(),
+                crate::arch::cpu::mtval(),
             ) else {
-                uart::write_line("  record task fault: FAILED");
                 crate::arch::halt();
             };
-
-            // Печатаем детали fault
-            uart::write_str("  fault reason: ");
-            crate::kernel::task::table::print_task_fault_reason(fault_reason);
-            uart::write_line("");
-            uart::write_str("  fault mcause: ");
-            uart::write_hex_u64(fault_mcause);
-            uart::write_line("");
-            uart::write_str("  fault mepc:   ");
-            uart::write_hex_u64(fault_mepc);
-            uart::write_line("");
-            uart::write_str("  fault mtval:  ");
-            uart::write_hex_u64(fault_mtval);
-            uart::write_line("");
-
-            uart::write_line("  record task fault: OK");
 
             uart::write_str("  task: ");
             crate::kernel::task::table::print_task_name_by_id(task_id);
@@ -273,7 +223,6 @@ pub fn simulated_real_trap_fault() -> ! {
             let current_sp = crate::arch::stack_pointer();
             let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
             let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
-            crate::kernel::task::debug::set_debug_last_task_sp(current_sp);
 
             uart::write_str("simulated real trap current SP: ");
             uart::write_hex_u64(current_sp);
@@ -287,11 +236,7 @@ pub fn simulated_real_trap_fault() -> ! {
             uart::write_line("simulated real trap classified as task fault");
             uart::write_line("returning to kernel stack after simulated real trap...");
 
-            crate::kernel::task::debug::set_debug_task_return_kind(
-                crate::kernel::task::table::TaskReturnKind::Fault,
-            );
-
-            crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
+            crate::kernel::task::fault::return_current_task_fault(current_sp, kernel_sp, return_pc);
         }
     }
 }

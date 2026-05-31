@@ -4,11 +4,11 @@
       "initialization_options": {
         "cargo": {
           "allTargets": false,
-          "target": "aarch64-unknown-none-elf",
+          "target": "aarch64-unknown-none",
         },
         "check": {
           "allTargets": false,
-          "targets": ["aarch64-unknown-none-elf"],
+          "targets": ["aarch64-unknown-none"],
         },
       },
     },

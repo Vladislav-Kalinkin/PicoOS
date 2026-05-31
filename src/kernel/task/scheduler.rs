@@ -109,6 +109,10 @@ pub fn force_current_task(id: usize) {
         return;
     }
 
+    set_round_robin_cursor(id);
+}
+
+fn set_round_robin_cursor(id: usize) {
     unsafe {
         CURRENT_TASK_ID = Some(id);
     }
@@ -855,7 +859,7 @@ fn handle_task_yield(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
         return TaskReturnHandleResult::Failed;
     }
 
-    set_current_task(snapshot.task_id);
+    set_round_robin_cursor(snapshot.task_id);
 
     scheduler_log_str("  round-robin cursor set to yielded task: ");
     task::print_task_name_by_id(snapshot.task_id);
@@ -882,7 +886,7 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
         return TaskReturnHandleResult::Failed;
     }
 
-    set_current_task(snapshot.task_id);
+    set_round_robin_cursor(snapshot.task_id);
 
     scheduler_log_str("  round-robin cursor set to exited task: ");
     task::print_task_name_by_id(snapshot.task_id);
@@ -931,7 +935,9 @@ fn start_selected_task_checked(task_id: usize) -> ! {
     task::print_task_name_by_id(task_id);
     scheduler_log_line("");
 
-    if !task::is_fresh_ready_task(task_id) || !task::is_ready_running_faulted_finished_invariant_ok(task_id) {
+    if !task::is_fresh_ready_task(task_id)
+        || !task::is_ready_running_faulted_finished_invariant_ok(task_id)
+    {
         scheduler_log_line("  start blocked: task is not fresh Ready");
         scheduler_start_failed();
     }
@@ -988,12 +994,15 @@ fn scheduler_start_failed() -> ! {
 fn handle_task_fault(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("  return action: fault -> no resume for faulted task");
 
-    if snapshot.can_resume || !task::is_task_faulted(snapshot.task_id) || !task::is_ready_running_faulted_finished_invariant_ok(snapshot.task_id) {
+    if snapshot.can_resume
+        || !task::is_task_faulted(snapshot.task_id)
+        || !task::is_ready_running_faulted_finished_invariant_ok(snapshot.task_id)
+    {
         scheduler_log_line("  fault result: failed; faulted task is still resumable");
         return TaskReturnHandleResult::Failed;
     }
 
-    set_current_task(snapshot.task_id);
+    set_round_robin_cursor(snapshot.task_id);
 
     scheduler_log_str("  round-robin cursor set to faulted task: ");
     task::print_task_name_by_id(snapshot.task_id);

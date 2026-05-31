@@ -87,48 +87,15 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
             crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
                 uart::write_line("trap handler action: marking current task as Faulted");
 
-                let task_id = crate::kernel::task::debug::debug_current_task_id();
-
-                let fault_mcause = cause;
-                let fault_mepc = mepc;
-                let fault_mtval = mtval;
-
-                let Some(fault_reason) = crate::kernel::task::table::record_task_fault(
-                    task_id,
-                    fault_mcause,
-                    fault_mepc,
-                    fault_mtval,
-                ) else {
-                    uart::write_line("  record task fault: FAILED");
+                if crate::kernel::task::fault::record_current_task_fault(cause, mepc, mtval)
+                    .is_none()
+                {
                     arch::halt();
-                };
-
-                uart::write_str("  fault reason: ");
-                crate::kernel::task::table::print_task_fault_reason(fault_reason);
-                uart::write_line("");
-
-                uart::write_str("  fault mcause: ");
-                uart::write_hex_u64(fault_mcause);
-                uart::write_line("");
-
-                uart::write_str("  fault mepc:   ");
-                uart::write_hex_u64(fault_mepc);
-                uart::write_line("");
-
-                uart::write_str("  fault mtval:  ");
-                uart::write_hex_u64(fault_mtval);
-                uart::write_line("");
-
-                uart::write_line("  record task fault: OK");
+                }
 
                 let task_sp = interrupted_sp(frame);
                 let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
                 let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
-
-                crate::kernel::task::debug::set_debug_last_task_sp(task_sp);
-                crate::kernel::task::debug::set_debug_task_return_kind(
-                    crate::kernel::task::table::TaskReturnKind::Fault,
-                );
 
                 uart::write_str("  task fault return SP: ");
                 uart::write_hex_u64(task_sp);
@@ -144,7 +111,9 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
                 uart::write_line("trap handler action: return to kernel task return path");
 
-                crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
+                crate::kernel::task::fault::return_current_task_fault(
+                    task_sp, kernel_sp, return_pc,
+                );
             }
         }
     }

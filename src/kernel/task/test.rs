@@ -247,7 +247,6 @@ pub fn test_task_yield() {
     }
 }
 
-
 pub fn handle_task_return_for_debug_test() {
     let task_id = debug_current_task_id();
     let kind = debug_task_return_kind();
@@ -391,7 +390,6 @@ fn print_last_task_sp_check(task_id: usize, task_sp: u64) {
         }
     }
 }
-
 
 #[cfg(feature = "resume_restore_test")]
 pub fn test_resume_restore() {
