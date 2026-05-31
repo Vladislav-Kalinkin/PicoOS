@@ -23,7 +23,7 @@ pub fn test_tasks() {
     crate::kernel::task::table::init();
 
     let _ = create_task("idle", idle_task);
-    print_task_zero_context_guard();
+    bootstrap::print_task_zero_context_guard();
     let _ = create_task("worker-a", worker_a_task);
     let _ = create_task("worker-b", worker_b_task);
 
@@ -34,7 +34,7 @@ pub fn test_tasks() {
 pub fn test_tasks_with_yield_worker() {
     crate::kernel::task::table::init();
     let _ = create_task("idle", idle_task);
-    print_task_zero_context_guard();
+    bootstrap::print_task_zero_context_guard();
 
     #[cfg(feature = "scheduler_fault_lifecycle_test")]
     {
@@ -224,7 +224,7 @@ pub fn test_task_yield() {
         not(feature = "scheduler_fault_lifecycle_test")
     ))]
     {
-        test_task_fault_bootstrap();
+        bootstrap::test_task_fault_bootstrap();
     }
 
     #[cfg(all(
@@ -462,9 +462,7 @@ pub fn test_resume_restore() {
         }
     }
 
-    unsafe {
-        crate::arch::restore_verified_resume_frame(frame);
-    }
+    crate::arch::restore_verified_resume_frame(frame);
 }
 
 #[cfg(feature = "resume_preflight_test")]
@@ -1157,27 +1155,6 @@ fn check_finished_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("finished", id)
 }
 
-fn print_task_zero_context_guard() {
-    use crate::kernel::task::debug::TrapExecutionContext;
-
-    crate::kernel::task::debug::set_debug_current_task_id(0);
-
-    let ok = matches!(
-        crate::kernel::task::debug::current_trap_execution_context(),
-        TrapExecutionContext::Task
-    );
-
-    crate::kernel::task::debug::clear_debug_current_task_id();
-
-    crate::drivers::uart::write_str("task id 0 context guard: ");
-    crate::kernel::task::table::print_yes_no(ok);
-    crate::drivers::uart::write_line("");
-
-    if !ok {
-        crate::arch::halt();
-    }
-}
-
 #[cfg(all(
     target_arch = "riscv64",
     feature = "real_resume_restore_jump",
@@ -1516,25 +1493,6 @@ fn faulty_worker() {
     crate::drivers::uart::write_line("faulty_worker: step 1");
     crate::drivers::uart::write_line("faulty_worker: intentional fault");
     crate::kernel::task::task_fault();
-}
-
-#[cfg(feature = "task_fault_test")]
-fn test_task_fault_bootstrap() {
-    uart::write_line("task fault bootstrap:");
-    uart::write_line("bootstrap action: scheduler starts first fresh task");
-
-    crate::kernel::task::scheduler::set_current_task(0);
-
-    match crate::kernel::task::scheduler::run() {
-        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-            uart::write_line("task fault bootstrap result: no runnable task");
-            crate::arch::halt();
-        }
-        crate::kernel::task::scheduler::RunResult::Failed => {
-            uart::write_line("task fault bootstrap result: FAILED");
-            crate::arch::halt();
-        }
-    }
 }
 
 #[cfg(feature = "task_fault_test")]

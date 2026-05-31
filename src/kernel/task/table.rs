@@ -456,6 +456,32 @@ pub fn find_next_ready_after(current_id: Option<usize>) -> Option<usize> {
 }
 
 #[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
+pub fn find_next_dispatchable_after(current_id: Option<usize>) -> Option<usize> {
+    let start_slot = match current_id {
+        Some(id) => find_slot_by_id(id).map(|slot| slot + 1).unwrap_or(0),
+        None => 0,
+    };
+
+    for offset in 0..MAX_TASKS {
+        let slot = (start_slot + offset) % MAX_TASKS;
+
+        unsafe {
+            if matches!(TASKS[slot].state, TaskState::Empty) {
+                continue;
+            }
+
+            let task_id = TASKS[slot].id;
+            if is_dispatchable_task(task_id) {
+                return Some(task_id);
+            }
+        }
+    }
+
+    None
+}
+
+#[allow(dead_code)]
 #[cfg(feature = "scheduler_reentry_test")]
 #[allow(clippy::needless_range_loop)]
 pub fn set_running(id: usize) {

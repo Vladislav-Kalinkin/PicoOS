@@ -57,6 +57,11 @@ unsafe extern "C" {
 }
 
 #[inline(always)]
+fn symbol_addr(symbol: *const u8) -> u64 {
+    symbol as u64
+}
+
+#[inline(always)]
 pub fn halt() -> ! {
     loop {
         unsafe {
@@ -105,7 +110,7 @@ pub fn last_riscv_yield_context() -> RiscvYieldContext {
 }
 
 pub fn init_exceptions() {
-    let trap_addr = unsafe { &trap_vector as *const u8 as u64 };
+    let trap_addr = symbol_addr(core::ptr::addr_of!(trap_vector));
     let trap_stack_top = trap_stack_top();
 
     cpu::set_mtvec(trap_addr);
@@ -121,7 +126,7 @@ pub fn init_exceptions() {
 }
 
 fn trap_stack_top() -> u64 {
-    unsafe { &__trap_stack_top as *const u8 as u64 }
+    symbol_addr(core::ptr::addr_of!(__trap_stack_top))
 }
 
 #[cfg(feature = "kernel_fault_guard_test")]
@@ -369,7 +374,7 @@ pub fn capture_yield_context() -> (u64, u64) {
 }
 
 #[allow(dead_code)]
-pub unsafe fn yield_to_kernel_raw(
+pub fn yield_to_kernel_raw(
     task_sp: u64,
     resume_pc: u64,
     kernel_sp: u64,
@@ -386,7 +391,7 @@ pub unsafe fn yield_to_kernel_raw(
 }
 
 #[allow(dead_code)]
-pub unsafe fn restore_verified_resume_frame(
+pub fn restore_verified_resume_frame(
     frame: crate::kernel::task::cpu_context::TaskCpuContext,
 ) -> ! {
     crate::drivers::uart::write_line("arch restore verified resume frame:");
@@ -435,7 +440,9 @@ pub unsafe fn restore_verified_resume_frame(
     print_restore_contract();
 
     crate::drivers::uart::write_line(" calling disabled assembly restore stub...");
-    restore_resume_frame_asm_stub(frame);
+    unsafe {
+        restore_resume_frame_asm_stub(frame);
+    }
 }
 
 fn print_restore_plan(frame: crate::kernel::task::cpu_context::TaskCpuContext) {
@@ -534,9 +541,7 @@ pub unsafe extern "C" fn yield_to_kernel_returning_stub(
 
     crate::drivers::uart::write_line(" delegating to raw yield jump");
 
-    unsafe {
-        yield_to_kernel_raw(task_sp, resume_pc, kernel_sp, return_pc);
-    }
+    yield_to_kernel_raw(task_sp, resume_pc, kernel_sp, return_pc);
 }
 
 #[cfg(feature = "verbose_resume_debug")]

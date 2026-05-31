@@ -7,7 +7,17 @@ static mut HEAP_START: u64 = 0;
 static mut HEAP_END: u64 = 0;
 static mut HEAP_NEXT: u64 = 0;
 
+fn reset_heap_state() {
+    unsafe {
+        HEAP_START = 0;
+        HEAP_END = 0;
+        HEAP_NEXT = 0;
+    }
+}
+
 pub fn init() -> bool {
+    reset_heap_state();
+
     let first_page = memory::allocate_page();
 
     let Some(start) = first_page else {
@@ -18,17 +28,20 @@ pub fn init() -> bool {
 
     for _ in 1..HEAP_PAGES {
         let Some(page) = memory::allocate_page() else {
+            reset_heap_state();
             return false;
         };
 
         last = page;
     }
 
+    let Some(end) = last.checked_add(memory::PAGE_SIZE) else {
+        reset_heap_state();
+        return false;
+    };
+
     unsafe {
         HEAP_START = start;
-        let Some(end) = last.checked_add(memory::PAGE_SIZE) else {
-            return false;
-        };
         HEAP_END = end;
         HEAP_NEXT = start;
     }
@@ -125,5 +138,9 @@ fn alloc_and_print(size: u64, align: u64) {
 }
 
 fn align_up(value: u64, align: u64) -> Option<u64> {
+    if align == 0 || !align.is_power_of_two() {
+        return None;
+    }
+
     Some(value.checked_add(align - 1)? & !(align - 1))
 }
