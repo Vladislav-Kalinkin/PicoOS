@@ -9,8 +9,11 @@ pub struct InitialTaskContext {
 
 pub const INITIAL_TASK_CONTEXT_SIZE: u64 = core::mem::size_of::<InitialTaskContext>() as u64;
 
-pub fn prepare_initial_stack(stack_top: u64, entry: u64) -> u64 {
-    let context_sp = align_down(stack_top - INITIAL_TASK_CONTEXT_SIZE, 16);
+pub fn prepare_initial_stack(stack_top: u64, entry: u64) -> Option<u64> {
+    let context_sp = align_down(stack_top.checked_sub(INITIAL_TASK_CONTEXT_SIZE)?, 16);
+    context_sp
+        .checked_add(INITIAL_TASK_CONTEXT_SIZE)
+        .filter(|end| *end <= stack_top)?;
 
     let context = context_sp as *mut InitialTaskContext;
 
@@ -19,7 +22,7 @@ pub fn prepare_initial_stack(stack_top: u64, entry: u64) -> u64 {
         (*context).stack_top = stack_top;
     }
 
-    context_sp
+    Some(context_sp)
 }
 
 pub fn print_initial_context(sp: u64) {

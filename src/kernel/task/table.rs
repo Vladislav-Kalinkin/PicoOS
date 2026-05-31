@@ -156,11 +156,20 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
                     return None;
                 };
 
-                let stack_top = stack_start + memory::PAGE_SIZE;
+                let Some(stack_top) = stack_start.checked_add(memory::PAGE_SIZE) else {
+                    uart::write_str("invalid stack range for task: ");
+                    uart::write_line(name);
+                    return None;
+                };
                 let initial_sp = stack_top;
                 let initial_pc = entry as *const () as usize as u64;
 
-                let prepared_sp = context::prepare_initial_stack(stack_top, initial_pc);
+                let Some(prepared_sp) = context::prepare_initial_stack(stack_top, initial_pc)
+                else {
+                    uart::write_str("failed to prepare stack for task: ");
+                    uart::write_line(name);
+                    return None;
+                };
 
                 let saved_sp = prepared_sp;
                 let saved_pc = initial_pc;

@@ -26,7 +26,10 @@ pub fn init() -> bool {
 
     unsafe {
         HEAP_START = start;
-        HEAP_END = last + memory::PAGE_SIZE;
+        let Some(end) = last.checked_add(memory::PAGE_SIZE) else {
+            return false;
+        };
+        HEAP_END = end;
         HEAP_NEXT = start;
     }
 
@@ -34,7 +37,7 @@ pub fn init() -> bool {
 }
 
 pub fn alloc(size: u64, align: u64) -> Option<u64> {
-    if size == 0 || align == 0 {
+    if size == 0 || align == 0 || !align.is_power_of_two() {
         return None;
     }
 
@@ -43,7 +46,7 @@ pub fn alloc(size: u64, align: u64) -> Option<u64> {
             return None;
         }
 
-        let start = align_up(HEAP_NEXT, align);
+        let start = align_up(HEAP_NEXT, align)?;
         let end = start.checked_add(size)?;
 
         if end > HEAP_END {
@@ -121,6 +124,6 @@ fn alloc_and_print(size: u64, align: u64) {
     }
 }
 
-fn align_up(value: u64, align: u64) -> u64 {
-    (value + align - 1) & !(align - 1)
+fn align_up(value: u64, align: u64) -> Option<u64> {
+    Some(value.checked_add(align - 1)? & !(align - 1))
 }

@@ -27,11 +27,19 @@ static mut NEXT_FREE_PAGE: u64 = 0;
 static mut MEMORY_END: u64 = 0;
 
 pub fn init() {
+    let end = (platform::RAM_START as u64).checked_add(platform::RAM_SIZE as u64);
     let start = align_up(free_memory_start(), PAGE_SIZE);
-    let end = platform::RAM_START as u64 + platform::RAM_SIZE as u64;
+
+    let (Some(start), Some(end)) = (start, end) else {
+        unsafe {
+            NEXT_FREE_PAGE = 0;
+            MEMORY_END = 0;
+        }
+        return;
+    };
 
     unsafe {
-        NEXT_FREE_PAGE = start;
+        NEXT_FREE_PAGE = if start <= end { start } else { 0 };
         MEMORY_END = end;
     }
 }
@@ -43,7 +51,7 @@ pub fn allocate_page() -> Option<u64> {
         }
 
         let page = NEXT_FREE_PAGE;
-        let next = page + PAGE_SIZE;
+        let next = page.checked_add(PAGE_SIZE)?;
 
         if next > MEMORY_END {
             return None;
@@ -208,6 +216,10 @@ fn print_range(name: &str, start: u64, end: u64) {
     uart::write_line(" bytes");
 }
 
-fn align_up(value: u64, align: u64) -> u64 {
-    (value + align - 1) & !(align - 1)
+fn align_up(value: u64, align: u64) -> Option<u64> {
+    if align == 0 || !align.is_power_of_two() {
+        return None;
+    }
+
+    Some(value.checked_add(align - 1)? & !(align - 1))
 }

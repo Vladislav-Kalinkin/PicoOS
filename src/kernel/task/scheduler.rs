@@ -662,6 +662,7 @@ fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
     scheduler_log_line("  scheduler restore path result: OK");
 
     #[cfg(any(
+        feature = "scheduler_dispatch_test",
         feature = "two_task_resume_handoff_test",
         feature = "task_fault_test",
         feature = "scheduler_fault_lifecycle_test"
@@ -972,6 +973,7 @@ fn start_selected_task_checked(task_id: usize) -> ! {
     scheduler_log_line("  scheduler start path result: OK");
 
     #[cfg(any(
+        feature = "scheduler_dispatch_test",
         feature = "two_task_resume_handoff_test",
         feature = "task_fault_test",
         feature = "scheduler_fault_lifecycle_test"
