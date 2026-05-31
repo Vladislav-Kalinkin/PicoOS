@@ -42,6 +42,7 @@ log_trap = []
 log_timer = []
 log_fault = []
 log_sleep = []
+timer_preemption_prototype = []
 
 two_task_resume_handoff_selftest = [
   "scheduler_reentry_selftest",

@@ -28,6 +28,14 @@ echo "== Clippy RISC-V task resume selftest =="
 cargo clippy --features "task_resume_selftest" -- -D warnings
 
 echo
+echo "== Build RISC-V task sleep selftest =="
+cargo build --features "task_resume_selftest,task_sleep_test"
+
+echo
+echo "== Clippy RISC-V task sleep selftest =="
+cargo clippy --features "task_resume_selftest,task_sleep_test" -- -D warnings
+
+echo
 echo "== Build RISC-V scheduler run_once selftest =="
 cargo build --features "scheduler_run_once_selftest"
 

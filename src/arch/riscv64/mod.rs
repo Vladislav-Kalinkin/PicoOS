@@ -129,6 +129,10 @@ fn trap_stack_top() -> u64 {
     symbol_addr(core::ptr::addr_of!(__trap_stack_top))
 }
 
+pub fn reset_trap_stack_pointer_for_next_trap() {
+    cpu::set_mscratch(trap_stack_top());
+}
+
 #[cfg(feature = "kernel_fault_guard_test")]
 pub fn is_trap_stack_addr(addr: u64) -> bool {
     let top = trap_stack_top();
@@ -232,7 +236,7 @@ pub fn return_to_kernel_stack_checked(kernel_sp: u64, return_pc: u64) -> ! {
         crate::arch::halt();
     }
 
-    cpu::set_mscratch(trap_stack_top());
+    reset_trap_stack_pointer_for_next_trap();
 
     unsafe {
         return_to_kernel_stack(kernel_sp, return_pc);

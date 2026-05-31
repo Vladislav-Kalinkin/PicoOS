@@ -149,6 +149,7 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     }
 
     let decided_next = crate::kernel::task::scheduler::decide_next_task_dry_run();
+    #[cfg(feature = "timer_preemption_prototype")]
     let decided_resumable = crate::kernel::task::scheduler::decide_next_resumable_task_dry_run();
 
     uart::write_str(" decision next: ");
@@ -170,6 +171,7 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     uart::write_line("");
     crate::kernel::log::info("timer", "scheduler decision computed");
 
+    #[cfg(feature = "timer_preemption_prototype")]
     if let Some(next_id) = decided_resumable {
         crate::kernel::task::scheduler::force_current_task(next_id);
         crate::kernel::log::ok("timer", "preemption prototype: switching to resumable task");
@@ -190,6 +192,8 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
             arch::halt();
         };
 
+        timer::arm_timer_hz(TIMER_HZ);
+        arch::reset_trap_stack_pointer_for_next_trap();
         crate::arch::restore_verified_resume_frame(frame);
     }
 

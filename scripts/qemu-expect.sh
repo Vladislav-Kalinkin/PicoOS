@@ -47,6 +47,11 @@ while IFS= read -r line; do
     status=1
     break
   fi
+
+  if [[ "$clean_line" == *"[FAIL]"* && "$clean_line" != *"kernel fault -> halt"* ]]; then
+    status=1
+    break
+  fi
 done <"$log_pipe"
 
 kill "$watchdog_pid" 2>/dev/null || true

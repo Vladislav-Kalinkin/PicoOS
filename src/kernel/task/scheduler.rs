@@ -50,6 +50,7 @@ pub fn decide_next_task_dry_run() -> Option<usize> {
     task::find_next_ready_after(current_task_id())
 }
 
+#[allow(dead_code)]
 pub fn decide_next_resumable_task_dry_run() -> Option<usize> {
     let candidate = task::find_next_ready_after(current_task_id())?;
     if task::is_resumable_task(candidate) {
@@ -783,7 +784,7 @@ pub fn handle_task_return(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResul
 
     match snapshot.last_return {
         crate::kernel::task::table::TaskReturnKind::Yield => handle_task_yield(snapshot),
-        crate::kernel::task::table::TaskReturnKind::Sleep => handle_task_exit(snapshot),
+        crate::kernel::task::table::TaskReturnKind::Sleep => handle_task_sleep(snapshot),
         crate::kernel::task::table::TaskReturnKind::Exit => handle_task_exit(snapshot),
         crate::kernel::task::table::TaskReturnKind::Fault => handle_task_fault(snapshot),
         crate::kernel::task::table::TaskReturnKind::None => handle_task_return_none(snapshot),
@@ -874,6 +875,49 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
         }
         None => {
             scheduler_log_line("  next dispatchable task after exit: none");
+            scheduler_log_line("  result: no runnable task");
+            TaskReturnHandleResult::NoRunnableTask
+        }
+    }
+}
+
+#[cfg(feature = "scheduler_reentry_test")]
+fn handle_task_sleep(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
+    scheduler_log_line("  return action: sleep -> no resume until wake tick");
+
+    if snapshot.can_resume {
+        scheduler_log_line("  sleep result: failed; sleeping task is still resumable");
+        return TaskReturnHandleResult::Failed;
+    }
+
+    set_round_robin_cursor(snapshot.task_id);
+
+    scheduler_log_str("  round-robin cursor set to sleeping task: ");
+    task::print_task_name_by_id(snapshot.task_id);
+    scheduler_log_line("");
+
+    scheduler_log_line("  sleep action: try next dispatchable task");
+
+    match find_next_dispatchable_task_after(Some(snapshot.task_id)) {
+        Some(task_id) => {
+            scheduler_log_str("  next dispatchable task after sleep: ");
+            crate::kernel::task::table::print_task_name_by_id(task_id);
+            scheduler_log_line("");
+            scheduler_log_line("  action: scheduler::run");
+
+            match run() {
+                RunResult::NoRunnableTask => {
+                    scheduler_log_line("  scheduler run returned: no runnable task");
+                    TaskReturnHandleResult::NoRunnableTask
+                }
+                RunResult::Failed => {
+                    scheduler_log_line("  scheduler run returned: failed");
+                    TaskReturnHandleResult::Failed
+                }
+            }
+        }
+        None => {
+            scheduler_log_line("  next dispatchable task after sleep: none");
             scheduler_log_line("  result: no runnable task");
             TaskReturnHandleResult::NoRunnableTask
         }
