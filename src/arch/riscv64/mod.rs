@@ -385,9 +385,14 @@ pub fn yield_to_kernel_raw(
     kernel_return_pc: u64,
 ) -> ! {
     crate::kernel::task::debug::set_debug_task_resume_context(task_sp, resume_pc);
-    crate::kernel::task::debug::set_debug_task_return_kind(
-        crate::kernel::task::TaskReturnKind::Yield,
-    );
+    if matches!(
+        crate::kernel::task::debug::debug_task_return_kind(),
+        crate::kernel::task::TaskReturnKind::None
+    ) {
+        crate::kernel::task::debug::set_debug_task_return_kind(
+            crate::kernel::task::TaskReturnKind::Yield,
+        );
+    }
 
     crate::kernel::task::debug::print_debug_task_resume_context();
 
@@ -538,8 +543,6 @@ pub unsafe extern "C" fn yield_to_kernel_returning_stub(
 ) -> ! {
     crate::drivers::uart::write_line("yield returning stub:");
     crate::drivers::uart::write_line(" mode: placeholder");
-
-    // остальной существующий код
 
     crate::drivers::uart::write_line(" delegating to raw yield jump");
 

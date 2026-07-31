@@ -36,6 +36,14 @@ echo "== Clippy RISC-V task sleep selftest =="
 cargo clippy --features "task_resume_selftest,task_sleep_test" -- -D warnings
 
 echo
+echo "== Build RISC-V task sleep runtime e2e selftest =="
+cargo build --features "task_sleep_runtime_e2e_selftest"
+
+echo
+echo "== Clippy RISC-V task sleep runtime e2e selftest =="
+cargo clippy --features "task_sleep_runtime_e2e_selftest" -- -D warnings
+
+echo
 echo "== Build RISC-V scheduler run_once selftest =="
 cargo build --features "scheduler_run_once_selftest"
 
@@ -87,6 +95,7 @@ echo
 echo "== QEMU marker tests =="
 scripts/test-task-resume-selftest.sh
 scripts/test-task-sleep-riscv.sh
+scripts/test-task-sleep-runtime-e2e-riscv.sh
 scripts/test-two-task-handoff-riscv.sh
 scripts/test-scheduler-fault-lifecycle-riscv.sh
 scripts/test-kernel-fault-guard-riscv.sh

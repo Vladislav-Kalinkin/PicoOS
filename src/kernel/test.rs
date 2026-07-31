@@ -19,7 +19,24 @@ fn runtime_selftest_scenario() -> RuntimeSelftestScenario {
         };
     }
 
-    #[cfg(all(not(feature = "kernel_fault_guard_test"), feature = "task_yield_test"))]
+    #[cfg(all(
+        not(feature = "kernel_fault_guard_test"),
+        feature = "task_yield_test",
+        feature = "timer_preemption_selftest"
+    ))]
+    {
+        return RuntimeSelftestScenario {
+            name: "timer_preemption",
+            run_bootstrap: runtime_bootstrap_task_yield,
+            run_after_scheduler_init: runtime_after_scheduler_noop,
+        };
+    }
+
+    #[cfg(all(
+        not(feature = "kernel_fault_guard_test"),
+        feature = "task_yield_test",
+        not(feature = "timer_preemption_selftest")
+    ))]
     {
         return RuntimeSelftestScenario {
             name: "task_yield",

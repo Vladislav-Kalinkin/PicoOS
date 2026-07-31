@@ -37,6 +37,7 @@ kernel_fault_guard_test = [
 ]
 scheduler_verbose_dispatch_trace = []
 task_sleep_test = []
+task_sleep_runtime_e2e_test = []
 kernel_log_scoped = []
 log_trap = []
 log_timer = []
@@ -78,6 +79,20 @@ task_resume_selftest = [
   "real_resume_restore_jump",
   "two_yield_task_test",
   "scheduler_resume_loop_test",
+]
+
+timer_preemption_selftest = [
+  "task_yield_test",
+  "timer_preemption_prototype",
+]
+
+task_sleep_runtime_e2e_selftest = [
+  "task_yield_test",
+  "task_sleep_test",
+  "task_sleep_runtime_e2e_test",
+  "timer_preemption_prototype",
+  "real_resume_restore_test",
+  "real_resume_restore_jump",
 ]
 
 scheduler_fault_lifecycle_test = [

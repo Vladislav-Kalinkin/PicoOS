@@ -941,12 +941,7 @@ pub fn find_first_resumable_task() -> Option<usize> {
         for slot in 0..MAX_TASKS {
             let task = TASKS[slot];
 
-            if matches!(task.state, TaskState::Ready)
-                && task.can_resume
-                && matches!(task.last_return_kind, TaskReturnKind::Yield)
-                && task.last_task_sp >= task.stack_start
-                && task.last_task_sp < task.stack_top
-            {
+            if matches!(task.state, TaskState::Ready) && is_resumable_task(task.id) {
                 return Some(task.id);
             }
         }
@@ -1539,8 +1534,9 @@ pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
             };
 
             if current_tick >= wake_tick {
-                let can_resume = TASKS[slot].has_started && TASKS[slot].cpu_context.is_valid();
+                let task_id = TASKS[slot].id;
                 TASKS[slot].state = TaskState::Ready;
+                let can_resume = is_resume_frame_safe_for_task(task_id);
                 TASKS[slot].last_return_kind = if can_resume {
                     TaskReturnKind::Sleep
                 } else {

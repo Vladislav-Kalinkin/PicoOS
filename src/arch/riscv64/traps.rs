@@ -172,9 +172,25 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     crate::kernel::log::info("timer", "scheduler decision computed");
 
     #[cfg(feature = "timer_preemption_prototype")]
-    if let Some(next_id) = decided_resumable {
+    let preemption_target = {
+        #[cfg(feature = "timer_preemption_selftest")]
+        {
+            decided_resumable.or_else(|| {
+                saved_task.filter(|id| crate::kernel::task::get_task_resume_frame(*id).is_some())
+            })
+        }
+
+        #[cfg(not(feature = "timer_preemption_selftest"))]
+        {
+            decided_resumable
+        }
+    };
+
+    #[cfg(feature = "timer_preemption_prototype")]
+    if let Some(next_id) = preemption_target {
         crate::kernel::task::scheduler::force_current_task(next_id);
         crate::kernel::log::ok("timer", "preemption prototype: switching to resumable task");
+        crate::drivers::uart::write_line("timer preemption result: OK");
 
         let Some(stack_start) = crate::kernel::task::get_task_stack_start(next_id) else {
             crate::kernel::log::fail("timer", "preemption missing task stack start");

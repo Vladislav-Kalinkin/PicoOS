@@ -65,7 +65,17 @@ pub fn test_tasks_with_yield_worker() {
     }
 
     #[cfg(all(
+        feature = "task_sleep_runtime_e2e_test",
+        not(feature = "scheduler_fault_lifecycle_test"),
+        not(feature = "two_task_resume_handoff_test")
+    ))]
+    {
+        let _ = create_task("worker-a", sleeping_task_runtime_e2e);
+    }
+
+    #[cfg(all(
         feature = "two_yield_task_test",
+        not(feature = "task_sleep_runtime_e2e_test"),
         not(feature = "two_task_resume_handoff_test"),
         not(feature = "scheduler_fault_lifecycle_test")
     ))]
@@ -74,6 +84,7 @@ pub fn test_tasks_with_yield_worker() {
     }
 
     #[cfg(not(any(
+        feature = "task_sleep_runtime_e2e_test",
         feature = "two_yield_task_test",
         feature = "two_task_resume_handoff_test",
         feature = "scheduler_fault_lifecycle_test"
@@ -222,6 +233,14 @@ fn yielding_task() {
 
     uart::write_line("yielding_task: step 2");
 
+    crate::kernel::task::task_exit();
+}
+
+#[cfg(feature = "task_sleep_runtime_e2e_test")]
+fn sleeping_task_runtime_e2e() {
+    uart::write_line("sleeping_task_runtime_e2e: step 1");
+    crate::kernel::task::task_sleep_ticks(2);
+    uart::write_line("sleeping_task_runtime_e2e: resumed after timer wake");
     crate::kernel::task::task_exit();
 }
 
