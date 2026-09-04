@@ -48,4 +48,10 @@ pub fn print_cpu_context(context: TaskCpuContext) {
 
     uart::write_str(" s1: ");
     uart::write_hex_u64(context.s[1]);
+
+    uart::write_str(" s2: ");
+    uart::write_hex_u64(context.s[2]);
+
+    uart::write_str(" s11: ");
+    uart::write_hex_u64(context.s[11]);
 }

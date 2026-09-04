@@ -100,6 +100,7 @@ pub fn yield_now() {
     crate::drivers::uart::write_line("");
 
     crate::drivers::uart::write_line("yielding to kernel via RISC-V boundary...");
+    crate::drivers::uart::write_line("yield ABI: save s0-s11 at boundary");
 
     unsafe {
         crate::arch::task_yield_boundary(kernel_sp, return_pc);

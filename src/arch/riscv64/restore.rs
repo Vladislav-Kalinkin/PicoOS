@@ -272,14 +272,86 @@ unsafe fn restore_resume_frame_real_jump(
         crate::drivers::uart::write_line(" task exit requested");
     }
 
+    let ctx = core::ptr::addr_of!(frame);
     unsafe {
         core::arch::asm!(
-            "mv sp, {new_sp}",
-            "mv ra, {new_ra}",
-            "jr {resume_pc}",
-            new_sp = in(reg) frame.sp,
-            new_ra = in(reg) frame.ra,
-            resume_pc = in(reg) frame.resume_pc,
+            "ld ra, {ra_off}({ctx})",
+            "ld s0, {s0_off}({ctx})",
+            "ld s1, {s1_off}({ctx})",
+            "ld s2, {s2_off}({ctx})",
+            "ld s3, {s3_off}({ctx})",
+            "ld s4, {s4_off}({ctx})",
+            "ld s5, {s5_off}({ctx})",
+            "ld s6, {s6_off}({ctx})",
+            "ld s7, {s7_off}({ctx})",
+            "ld s8, {s8_off}({ctx})",
+            "ld s9, {s9_off}({ctx})",
+            "ld s10, {s10_off}({ctx})",
+            "ld s11, {s11_off}({ctx})",
+            "ld t0, {pc_off}({ctx})",
+            "ld sp, {sp_off}({ctx})",
+            "jr t0",
+            ctx = in(reg) ctx,
+            sp_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                sp
+            ),
+            ra_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                ra
+            ),
+            pc_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                resume_pc
+            ),
+            s0_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ),
+            s1_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 8,
+            s2_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 16,
+            s3_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 24,
+            s4_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 32,
+            s5_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 40,
+            s6_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 48,
+            s7_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 56,
+            s8_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 64,
+            s9_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 72,
+            s10_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 80,
+            s11_off = const core::mem::offset_of!(
+                crate::kernel::task::cpu_context::TaskCpuContext,
+                s
+            ) + 88,
             options(noreturn)
         );
     }

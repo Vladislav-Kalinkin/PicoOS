@@ -1,3 +1,18 @@
+use core::cell::UnsafeCell;
+
+/// Callee-saved GPRs captured in `task_yield_boundary` before kernel Rust
+/// clobbers them. Uniprocessor: written from asm, read on the task-return path.
+#[repr(transparent)]
+struct YieldSavedS(UnsafeCell<[u64; 12]>);
+
+// SAFETY: one hart; the yield boundary stores these registers before any
+// kernel function prologue runs, and the return path reads them before the
+// next yield.
+unsafe impl Sync for YieldSavedS {}
+
+#[unsafe(no_mangle)]
+static YIELD_SAVED_S: YieldSavedS = YieldSavedS(UnsafeCell::new([0; 12]));
+
 #[cfg(target_arch = "riscv64")]
 core::arch::global_asm!(
     r#"
@@ -14,6 +29,7 @@ task_yield_boundary:
      * At function entry:
      *   sp = task stack pointer at call boundary
      *   ra = continuation address after call task_yield_boundary
+     *   s0–s11 = task callee-saved (must be stored before a Rust prologue)
      */
 
     mv t2, a0
@@ -21,6 +37,20 @@ task_yield_boundary:
 
     mv t0, sp
     mv t1, ra
+
+    la t4, YIELD_SAVED_S
+    sd s0, 0(t4)
+    sd s1, 8(t4)
+    sd s2, 16(t4)
+    sd s3, 24(t4)
+    sd s4, 32(t4)
+    sd s5, 40(t4)
+    sd s6, 48(t4)
+    sd s7, 56(t4)
+    sd s8, 64(t4)
+    sd s9, 72(t4)
+    sd s10, 80(t4)
+    sd s11, 88(t4)
 
     /*
      * yield_to_kernel_returning_stub ABI:
@@ -54,39 +84,18 @@ pub fn capture_task_cpu_context(
     return_pc: u64,
 ) -> crate::kernel::task::cpu_context::TaskCpuContext {
     let ra: u64;
-    let mut s = [0u64; 12];
 
     unsafe {
         core::arch::asm!(
-        "mv {ra_out}, ra",
-        "mv {s0_out}, s0",
-        "mv {s1_out}, s1",
-        "mv {s2_out}, s2",
-        "mv {s3_out}, s3",
-        "mv {s4_out}, s4",
-        "mv {s5_out}, s5",
-        "mv {s6_out}, s6",
-        "mv {s7_out}, s7",
-        "mv {s8_out}, s8",
-        "mv {s9_out}, s9",
-        "mv {s10_out}, s10",
-        "mv {s11_out}, s11",
-        ra_out = out(reg) ra,
-        s0_out = out(reg) s[0],
-        s1_out = out(reg) s[1],
-        s2_out = out(reg) s[2],
-        s3_out = out(reg) s[3],
-        s4_out = out(reg) s[4],
-        s5_out = out(reg) s[5],
-        s6_out = out(reg) s[6],
-        s7_out = out(reg) s[7],
-        s8_out = out(reg) s[8],
-        s9_out = out(reg) s[9],
-        s10_out = out(reg) s[10],
-        s11_out = out(reg) s[11],
-        options(nomem, nostack, preserves_flags),
+            "mv {ra_out}, ra",
+            ra_out = out(reg) ra,
+            options(nomem, nostack, preserves_flags),
         );
     }
+
+    // SAFETY: stored by task_yield_boundary on this hart before kernel Rust
+    // ran; the return path reads it before the next yield.
+    let s = unsafe { *YIELD_SAVED_S.0.get() };
 
     crate::kernel::task::cpu_context::TaskCpuContext {
         sp,
@@ -126,7 +135,7 @@ pub unsafe extern "C" fn yield_to_kernel_returning_stub(
     return_pc: u64,
 ) -> ! {
     crate::drivers::uart::write_line("yield returning stub:");
-    crate::drivers::uart::write_line(" mode: placeholder");
+    crate::drivers::uart::write_line(" mode: s0-s11");
 
     crate::drivers::uart::write_line(" delegating to raw yield jump");
 
