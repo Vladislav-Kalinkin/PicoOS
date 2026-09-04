@@ -60,6 +60,7 @@ pub fn run_memory_tests() {
     kernel::memory::print_memory_layout();
     kernel::memory::test_page_allocator();
     kernel::heap::test_heap();
+    kernel::memory::print_mm_stats();
 }
 
 pub fn print_test_complete() {
