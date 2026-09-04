@@ -9,6 +9,7 @@ pub use riscv64::*;
 /// task code can call `crate::arch::task_yield_boundary(...)` without depending
 /// directly on the riscv64 module layout.
 #[cfg(target_arch = "riscv64")]
+#[allow(dead_code)]
 pub unsafe fn task_yield_boundary(kernel_sp: u64, return_pc: u64) {
     unsafe {
         riscv64::task_yield_boundary(kernel_sp, return_pc);

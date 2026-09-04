@@ -15,4 +15,5 @@ pub use entry::*;
 ))]
 pub use fault::*;
 pub use table::*;
+#[allow(unused_imports)]
 pub use test::*;

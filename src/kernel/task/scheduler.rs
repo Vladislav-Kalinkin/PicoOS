@@ -151,6 +151,7 @@ pub fn arm_worker_for_mret(task_id: usize, fresh: bool) {
 
     crate::kernel::cpu::set_current(task_id);
     crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
+    crate::arch::riscv64::pmp::set_current_stack(stack_start);
 
     if fresh {
         let _ = task::mark_task_started(task_id);
@@ -1000,6 +1001,22 @@ fn start_selected_task_checked(task_id: usize) -> ! {
     crate::kernel::cpu::set_current(task_id);
     crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
 
+    #[cfg(not(any(
+        feature = "task_yield_test",
+        feature = "kernel_fault_guard_test"
+    )))]
+    {
+        let Some(image) = build_fresh_trap_image(task_id) else {
+            scheduler_start_failed();
+        };
+        arm_worker_for_mret(task_id, true);
+        crate::arch::mret_to_trap_image(&image);
+    }
+
+    #[cfg(any(
+        feature = "task_yield_test",
+        feature = "kernel_fault_guard_test"
+    ))]
     crate::kernel::task::run_task_on_own_stack(task_id);
 }
 

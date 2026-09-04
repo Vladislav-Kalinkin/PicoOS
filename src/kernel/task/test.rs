@@ -136,9 +136,9 @@ fn idle_task() {
     feature = "kernel_fault_guard_test"
 )))]
 fn worker_yield_main() {
-    uart::write_line("worker_yield: start");
+    crate::kernel::sys::u_sys_log(b"worker_yield: start\n");
     loop {
-        crate::kernel::task::yield_now();
+        crate::kernel::sys::u_sys_yield();
     }
 }
 
@@ -148,10 +148,19 @@ fn worker_yield_main() {
     feature = "kernel_fault_guard_test"
 )))]
 fn worker_sleep_main() {
-    uart::write_line("worker_sleep: start");
+    crate::kernel::sys::u_sys_log(b"worker_sleep: start\n");
     loop {
-        crate::kernel::task::task_sleep_ticks(1);
+        crate::kernel::sys::u_sys_sleep(1);
     }
+}
+
+fn worker_pmp_deny() {
+    crate::kernel::sys::u_sys_log(b"pmp deny probe: store to .data\n");
+    unsafe {
+        core::ptr::write_volatile(crate::kernel::memory::data_start() as *mut u64, 0xDEAD);
+    }
+    crate::kernel::sys::u_sys_log(b"pmp deny probe: FAILED\n");
+    crate::kernel::sys::u_sys_exit();
 }
 
 #[cfg(not(any(
@@ -163,6 +172,7 @@ pub fn spawn_default_image() {
     crate::kernel::task::table::init();
     let _ = create_task("worker-yield", worker_yield_main);
     let _ = create_task("worker-sleep", worker_sleep_main);
+    let _ = create_task("worker-pmp-deny", worker_pmp_deny);
     uart::write_line("default image: idle + worker_yield + worker_sleep");
     print_tasks();
 }

@@ -4,16 +4,35 @@ use crate::kernel::task::table::TaskEntry;
 use crate::kernel::task::table::TaskReturnKind;
 
 pub fn task_trampoline(entry: TaskEntry) -> ! {
-    uart::write_line("");
-    uart::write_line("task trampoline:");
-    uart::write_str("calling entry: ");
-    #[allow(clippy::fn_to_numeric_cast_any)]
-    uart::write_hex_u64(entry as usize as u64);
-    uart::write_line("");
+    #[cfg(any(
+        feature = "task_yield_test",
+        feature = "selftest",
+        feature = "kernel_fault_guard_test"
+    ))]
+    {
+        uart::write_line("");
+        uart::write_line("task trampoline:");
+        uart::write_str("calling entry: ");
+        #[allow(clippy::fn_to_numeric_cast_any)]
+        uart::write_hex_u64(entry as usize as u64);
+        uart::write_line("");
+    }
 
     entry();
 
+    #[cfg(any(
+        feature = "task_yield_test",
+        feature = "selftest",
+        feature = "kernel_fault_guard_test"
+    ))]
     task_exit();
+
+    #[cfg(not(any(
+        feature = "task_yield_test",
+        feature = "selftest",
+        feature = "kernel_fault_guard_test"
+    )))]
+    crate::kernel::sys::u_sys_exit();
 }
 
 #[unsafe(no_mangle)]
@@ -23,6 +42,7 @@ pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
     task_trampoline(entry);
 }
 
+#[allow(dead_code)]
 pub fn task_exit() -> ! {
     uart::write_line("task returned; task_exit called");
 
@@ -79,6 +99,7 @@ pub fn task_fault() -> ! {
     crate::kernel::task::fault::return_current_task_fault(current_sp, kernel_sp, return_pc);
 }
 
+#[allow(dead_code)]
 pub fn yield_now() {
     #[cfg(feature = "task_yield_test")]
     {
@@ -107,6 +128,7 @@ pub fn yield_now() {
     }
 }
 
+#[allow(dead_code)]
 pub fn task_sleep_ticks(ticks: u64) {
     let Some(task_id) = crate::kernel::cpu::current() else {
         crate::kernel::log::fail("sleep", "sleep requested with no current task");

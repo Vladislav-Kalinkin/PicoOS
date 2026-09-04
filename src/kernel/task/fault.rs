@@ -83,6 +83,28 @@ pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<u
     Some(task_id)
 }
 
+/// U-mode fault: mark the current frame Faulted and `mret` to the next
+/// worker (or idle-exit). Used by the default image PMP-deny path.
+pub fn record_and_switch_user_fault(mcause: u64, mepc: u64, mtval: u64) -> ! {
+    crate::kernel::log::info("trap", "marking current task as Faulted");
+
+    if record_current_task_fault(mcause, mepc, mtval).is_none() {
+        crate::arch::halt();
+    }
+
+    if matches!(
+        crate::kernel::task::table::TaskFaultReason::from_mcause(mcause & 0x7FFF_FFFF_FFFF_FFFF),
+        crate::kernel::task::table::TaskFaultReason::StoreAccessFault
+            | crate::kernel::task::table::TaskFaultReason::LoadAccessFault
+    ) {
+        crate::drivers::uart::write_line("pmp deny: task fault OK");
+    }
+
+    let after = crate::kernel::cpu::current();
+    crate::kernel::cpu::clear_current();
+    crate::kernel::sys::switch_after_syscall(after);
+}
+
 #[allow(dead_code)]
 pub fn return_current_task_fault(task_sp: u64, kernel_sp: u64, return_pc: u64) -> ! {
     crate::kernel::cpu::set_last_task_sp(task_sp);

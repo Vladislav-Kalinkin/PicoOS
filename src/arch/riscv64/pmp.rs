@@ -4,6 +4,12 @@ use crate::kernel::memory;
 
 const PMP_ENTRIES: usize = cpu::PMP_ENTRIES;
 
+const PMP_R: u64 = 1 << 0;
+const PMP_W: u64 = 1 << 1;
+const PMP_X: u64 = 1 << 2;
+const PMP_A_TOR: u64 = 1 << 3;
+const PMP_A_NAPOT: u64 = 3 << 3;
+
 /// TOR vs NAPOT (do not mix as TOR *i−1*):
 ///
 /// - TOR entry *i* matches `pmpaddr[i-1] <= y < pmpaddr[i]` regardless of
@@ -12,9 +18,8 @@ const PMP_ENTRIES: usize = cpu::PMP_ENTRIES;
 /// - NAPOT 4 KiB at 4 KiB-aligned `base`: `(base >> 2) | 0x1FF`, `A=NAPOT`.
 ///   Not `base >> 2` alone (that is TOR).
 ///
-/// Intended 0.2 layout (programmed OFF here; PR19 enables A bits):
-/// pmp0 TOR/OFF bound at `__text_start`, pmp1 TOR RX `.text`, pmp2 TOR R
-/// `.rodata`, pmp3 NAPOT current stack. TOR chain first, NAPOT last.
+/// Layout: pmp0 TOR-deny `[0, __text_start)`, pmp1 TOR RX `.text`, pmp2 TOR R
+/// `.rodata`, pmp3 NAPOT current stack (retargeted on switch).
 pub fn init() {
     cpu::set_pmpcfg0(0);
     cpu::set_pmpcfg2(0);
@@ -26,8 +31,20 @@ pub fn init() {
     cpu::set_pmpaddr(0, memory::text_start() >> 2);
     cpu::set_pmpaddr(1, memory::text_end() >> 2);
     cpu::set_pmpaddr(2, memory::rodata_end() >> 2);
+    cpu::set_pmpaddr(3, 0);
+
+    let pmp0 = PMP_A_TOR;
+    let pmp1 = PMP_R | PMP_X | PMP_A_TOR;
+    let pmp2 = PMP_R | PMP_A_TOR;
+    let pmp3 = PMP_R | PMP_W | PMP_A_NAPOT;
+    cpu::set_pmpcfg0(pmp0 | (pmp1 << 8) | (pmp2 << 16) | (pmp3 << 24));
+    cpu::set_pmpcfg2(0);
 
     dump();
+}
+
+pub fn set_current_stack(stack_start: u64) {
+    cpu::set_pmpaddr(3, (stack_start >> 2) | 0x1FF);
 }
 
 unsafe extern "C" {
@@ -37,7 +54,7 @@ unsafe extern "C" {
 
 fn dump() {
     uart::write_line("");
-    uart::write_line("PMP (dump-only, all A=OFF):");
+    uart::write_line("PMP (TOR text/rodata, NAPOT stack):");
 
     uart::write_str("trap stack: ");
     uart::write_hex_u64(core::ptr::addr_of!(__trap_stack_bottom) as u64);

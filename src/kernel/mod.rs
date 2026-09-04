@@ -3,6 +3,7 @@ pub mod cpu;
 pub mod irq_cell;
 pub mod log;
 pub mod memory;
+pub mod sys;
 pub mod task;
 pub mod test;
 pub mod ticks;

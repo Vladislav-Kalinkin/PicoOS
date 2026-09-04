@@ -4,6 +4,7 @@ pub const MSTATUS_MIE: u64 = 1 << 3;
 pub const MSTATUS_MPIE: u64 = 1 << 7;
 pub const MSTATUS_MPP: u64 = 0b11 << 11;
 pub const MSTATUS_MPP_M: u64 = 0b11 << 11;
+pub const MSTATUS_MPP_U: u64 = 0;
 pub const MSTATUS_MPRV: u64 = 1 << 17;
 pub const MSTATUS_FS: u64 = 0b11 << 13;
 
@@ -102,15 +103,40 @@ pub fn set_mstatus(value: u64) {
     }
 }
 
-/// Worker `mret`: `MIE=0`, `MPIE=1`, `MPRV=0`, `MPP=M` (PR16). Never copy a
-/// saved `mstatus` verbatim — that would re-enable IRQs on the trap stack.
+fn worker_mpp() -> u64 {
+    // Feature-gated selftests still execute workers in M-mode (UART from the
+    // task, function-call yield). Default image is U-mode (PR19).
+    #[cfg(any(
+        feature = "task_yield_test",
+        feature = "kernel_fault_guard_test",
+        feature = "selftest"
+    ))]
+    {
+        MSTATUS_MPP_M
+    }
+    #[cfg(not(any(
+        feature = "task_yield_test",
+        feature = "kernel_fault_guard_test",
+        feature = "selftest"
+    )))]
+    {
+        MSTATUS_MPP_U
+    }
+}
+
+/// Worker `mret`: `MIE=0`, `MPIE=1`, `MPRV=0`. `MPP` is U on the default
+/// image and M for resume/fault selftests. Never copy saved `mstatus`.
 pub fn synthesize_mstatus_for_mret_worker() -> u64 {
     let current = mstatus();
     let fs = current & MSTATUS_FS;
     (current & !(MSTATUS_MIE | MSTATUS_MPIE | MSTATUS_MPP | MSTATUS_MPRV))
         | MSTATUS_MPIE
-        | MSTATUS_MPP_M
+        | worker_mpp()
         | fs
+}
+
+pub fn trapped_from_user() -> bool {
+    (mstatus() & MSTATUS_MPP) == MSTATUS_MPP_U
 }
 
 /// Idle-exit: `MPP=M`, `MIE=1`, `MPIE=1`, `MPRV=0`. Used only when jumping to

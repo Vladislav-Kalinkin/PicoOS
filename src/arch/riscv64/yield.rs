@@ -69,6 +69,7 @@ task_yield_boundary:
 );
 
 unsafe extern "C" {
+    #[allow(dead_code)]
     pub fn task_yield_boundary(kernel_sp: u64, return_pc: u64);
 }
 

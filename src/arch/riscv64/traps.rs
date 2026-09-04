@@ -19,6 +19,11 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
         handle_timer_interrupt(frame);
     }
 
+    if !is_interrupt && code == 8 {
+        crate::kernel::sys::handle_ecall(frame);
+        return;
+    }
+
     let mepc = cpu::mepc();
     let mtval = cpu::mtval();
 
@@ -119,6 +124,10 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     #[cfg(not(feature = "scheduler_fault_lifecycle_test"))]
     {
+        if crate::kernel::cpu::current().is_some() && cpu::trapped_from_user() {
+            crate::kernel::task::fault::record_and_switch_user_fault(cause, mepc, mtval);
+        }
+
         crate::kernel::log::fail("trap", "system halted after trap");
         arch::halt();
     }
