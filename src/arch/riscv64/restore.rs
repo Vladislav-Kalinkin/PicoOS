@@ -1,3 +1,71 @@
+use crate::kernel::trap_frame::{TRAP_FRAME_SIZE, TrapImage};
+
+unsafe extern "C" {
+    fn trap_return() -> !;
+}
+
+/// Rewrite a trap-stack frame from `image`, `csrw mepc`/`mstatus` (`MPP=M`,
+/// `MIE=0`, `MPIE=1`), then enter `trap.S` `trap_return` so the epilogue `mret`s.
+/// Timer path does **not** add 4 to `mepc`.
+pub fn mret_to_trap_image(image: &TrapImage) -> ! {
+    crate::arch::disable_irq();
+    crate::kernel::cpu::set_in_trap(false);
+
+    let trap_top = super::trap_stack_top();
+    let frame =
+        (trap_top - TRAP_FRAME_SIZE as u64) as *mut crate::kernel::trap_frame::Riscv64TrapFrame;
+
+    unsafe {
+        *frame = image.gpr;
+    }
+
+    super::cpu::set_mepc(image.mepc);
+    super::cpu::set_mstatus(super::cpu::synthesize_mstatus_for_mret_worker());
+
+    unsafe {
+        core::arch::asm!(
+            "mv sp, {frame}",
+            "j {epilogue}",
+            frame = in(reg) frame,
+            epilogue = sym trap_return,
+            options(noreturn)
+        );
+    }
+}
+
+/// Worker → idle: reset `mscratch`, switch to the kernel stack, enable MIE,
+/// jump to `idle_loop`. Must not `mret` (that would leave `mscratch` as the
+/// worker SP).
+pub fn idle_exit_from_trap() -> ! {
+    crate::kernel::cpu::set_in_trap(false);
+    crate::kernel::task::scheduler::switch_to_idle();
+
+    let trap_top = super::trap_stack_top();
+    let kernel_sp = {
+        let saved = crate::kernel::cpu::kernel_sp_before_task();
+        if saved == 0 {
+            crate::kernel::memory::stack_top()
+        } else {
+            saved
+        }
+    };
+    let mstatus = super::cpu::synthesize_mstatus_for_idle();
+
+    unsafe {
+        core::arch::asm!(
+            "csrw mscratch, {trap_top}",
+            "csrw mstatus, {mstatus}",
+            "mv sp, {kernel_sp}",
+            "j {idle}",
+            trap_top = in(reg) trap_top,
+            mstatus = in(reg) mstatus,
+            kernel_sp = in(reg) kernel_sp,
+            idle = sym crate::kernel::task::scheduler::idle_loop,
+            options(noreturn)
+        );
+    }
+}
+
 #[allow(dead_code)]
 pub fn restore_verified_resume_frame(frame: crate::kernel::task::cpu_context::TaskCpuContext) -> ! {
     crate::drivers::uart::write_line("arch restore verified resume frame:");

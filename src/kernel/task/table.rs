@@ -3,6 +3,7 @@ use crate::kernel::irq_cell::IrqCell;
 use crate::kernel::memory;
 use crate::kernel::task::context;
 use crate::kernel::task::cpu_context::{self, TaskCpuContext};
+use crate::kernel::trap_frame::TrapImage;
 
 pub const MAX_TASKS: usize = 8;
 
@@ -103,6 +104,7 @@ pub struct Task {
     pub saved_sp: u64,
     pub saved_pc: u64,
     pub cpu_context: TaskCpuContext,
+    pub trap_image: Option<TrapImage>,
     pub last_kernel_sp: u64,
     pub last_kernel_return_pc: u64,
     pub last_task_sp: u64,
@@ -134,6 +136,7 @@ impl Task {
             saved_sp: 0,
             saved_pc: 0,
             cpu_context: TaskCpuContext::empty(),
+            trap_image: None,
             last_kernel_sp: 0,
             last_kernel_return_pc: 0,
             last_task_sp: 0,
@@ -258,6 +261,7 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
         task.saved_sp = saved_sp;
         task.saved_pc = saved_pc;
         task.cpu_context = TaskCpuContext::initial(saved_sp, saved_pc);
+        task.trap_image = None;
         task.last_kernel_sp = 0;
         task.last_kernel_return_pc = 0;
         task.last_task_sp = 0;
@@ -802,6 +806,31 @@ pub fn get_task_resume_frame(
     id: usize,
 ) -> Option<crate::kernel::task::cpu_context::TaskCpuContext> {
     get_task_cpu_context(id)
+}
+
+pub fn set_task_trap_image(id: usize, image: &TrapImage) -> bool {
+    with_task_mut(id, |task| task.trap_image = Some(*image)).is_some()
+}
+
+pub fn get_task_trap_image(id: usize) -> Option<TrapImage> {
+    with_task(id, |task| task.trap_image)?
+}
+
+/// Save a timer-preempted worker: full [`TrapImage`] plus a yield-shaped
+/// `TaskCpuContext` so existing resume-safety checks still see a consistent
+/// SP/PC record. `mepc` is the interrupted PC (no `+4`).
+pub fn save_preempted_trap_image(id: usize, image: &TrapImage) -> bool {
+    let cpu_context = image.to_yield_context();
+    if !set_task_trap_image(id, image) {
+        return false;
+    }
+    if !set_task_cpu_context(id, cpu_context) {
+        return false;
+    }
+    if !set_task_last_return_context(id, image.gpr.sp, 0, image.mepc) {
+        return false;
+    }
+    mark_task_ready_after_yield(id)
 }
 
 pub fn set_last_returned_task_id(id: usize) {

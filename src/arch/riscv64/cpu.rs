@@ -1,6 +1,11 @@
 use core::arch::asm;
 
-const MSTATUS_MIE: u64 = 1 << 3;
+pub const MSTATUS_MIE: u64 = 1 << 3;
+pub const MSTATUS_MPIE: u64 = 1 << 7;
+pub const MSTATUS_MPP: u64 = 0b11 << 11;
+pub const MSTATUS_MPP_M: u64 = 0b11 << 11;
+pub const MSTATUS_MPRV: u64 = 1 << 17;
+pub const MSTATUS_FS: u64 = 0b11 << 13;
 
 /// Run `f` with `mstatus.MIE` clear. Restores the previous MIE bit (does not
 /// force MIE=1). Nestable: an inner call that starts with MIE already clear
@@ -73,6 +78,51 @@ pub fn mepc() -> u64 {
     }
 
     value
+}
+
+#[inline(always)]
+pub fn set_mepc(value: u64) {
+    unsafe {
+        asm!(
+            "csrw mepc, {0}",
+            in(reg) value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
+#[inline(always)]
+pub fn set_mstatus(value: u64) {
+    unsafe {
+        asm!(
+            "csrw mstatus, {0}",
+            in(reg) value,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
+/// Worker `mret`: `MIE=0`, `MPIE=1`, `MPRV=0`, `MPP=M` (PR16). Never copy a
+/// saved `mstatus` verbatim — that would re-enable IRQs on the trap stack.
+pub fn synthesize_mstatus_for_mret_worker() -> u64 {
+    let current = mstatus();
+    let fs = current & MSTATUS_FS;
+    (current & !(MSTATUS_MIE | MSTATUS_MPIE | MSTATUS_MPP | MSTATUS_MPRV))
+        | MSTATUS_MPIE
+        | MSTATUS_MPP_M
+        | fs
+}
+
+/// Idle-exit: `MPP=M`, `MIE=1`, `MPIE=1`, `MPRV=0`. Used only when jumping to
+/// `idle_loop` without `mret`.
+pub fn synthesize_mstatus_for_idle() -> u64 {
+    let current = mstatus();
+    let fs = current & MSTATUS_FS;
+    (current & !(MSTATUS_MIE | MSTATUS_MPIE | MSTATUS_MPP | MSTATUS_MPRV))
+        | MSTATUS_MIE
+        | MSTATUS_MPIE
+        | MSTATUS_MPP_M
+        | fs
 }
 
 #[inline(always)]

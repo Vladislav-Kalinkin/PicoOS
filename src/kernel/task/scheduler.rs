@@ -5,6 +5,7 @@ use crate::kernel::irq_cell::IrqCell;
 use crate::kernel::task::cpu_context::TaskCpuContext;
 use crate::kernel::task::table as task;
 use crate::kernel::task::table::TaskReturnSnapshot;
+use crate::kernel::trap_frame::TrapImage;
 
 static CURRENT_TASK_ID: IrqCell<Option<usize>> = IrqCell::new(None);
 static DEFAULT_SEEN_YIELD: IrqCell<bool> = IrqCell::new(false);
@@ -112,6 +113,51 @@ pub fn idle_loop() -> ! {
     switch_to_idle();
     loop {
         crate::arch::wait_for_interrupt();
+    }
+}
+
+pub fn build_fresh_trap_image(task_id: usize) -> Option<TrapImage> {
+    let entry = task::get_task_entry(task_id)?;
+    let stack_top = task::get_task_stack_top(task_id)?;
+    let mut image = TrapImage::empty();
+    image.gpr.sp = stack_top;
+    image.gpr.a0 = entry as *const () as usize as u64;
+    image.mepc = crate::kernel::task::entry::task_trampoline_raw as *const () as usize as u64;
+    Some(image)
+}
+
+pub fn trap_image_for_resume(task_id: usize) -> Option<TrapImage> {
+    if let Some(image) = task::get_task_trap_image(task_id) {
+        return Some(image);
+    }
+    task::get_task_cpu_context(task_id).map(TrapImage::from_yield_context)
+}
+
+/// Pick the next worker for a timer interrupt. `after` is the interrupted
+/// worker (`Cpu.current`), not the idle WFI context.
+pub fn prepare_timer_switch(after: Option<usize>) -> Option<usize> {
+    find_next_dispatchable_task_after(after)
+}
+
+pub fn arm_worker_for_mret(task_id: usize, fresh: bool) {
+    force_current_task(task_id);
+
+    let Some(stack_start) = task::get_task_stack_start(task_id) else {
+        crate::arch::halt();
+    };
+    let Some(stack_top) = task::get_task_stack_top(task_id) else {
+        crate::arch::halt();
+    };
+
+    crate::kernel::cpu::set_current(task_id);
+    crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
+
+    if fresh {
+        let _ = task::mark_task_started(task_id);
+        crate::kernel::cpu::set_kernel_sp_before_task(crate::kernel::memory::stack_top());
+        crate::kernel::cpu::set_kernel_return_pc(
+            crate::kernel::task::debug::task_return_point as *const () as usize as u64,
+        );
     }
 }
 
@@ -604,6 +650,10 @@ fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
     crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
 
     scheduler_log_line("  calling arch restore from scheduler path...");
+
+    if let Some(image) = task::get_task_trap_image(task_id) {
+        crate::arch::mret_to_trap_image(&image);
+    }
 
     crate::arch::restore_verified_resume_frame(frame);
 }

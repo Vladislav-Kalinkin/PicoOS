@@ -135,6 +135,7 @@ clippy_riscv "kernel fault guard test" --features "kernel_fault_guard_test"
 echo
 echo "== QEMU marker tests =="
 scripts/test-mm-reap-riscv.sh
+scripts/test-timer-preemption-riscv.sh
 scripts/test-task-resume-selftest.sh
 scripts/test-task-sleep-riscv.sh
 scripts/test-task-sleep-runtime-e2e-riscv.sh

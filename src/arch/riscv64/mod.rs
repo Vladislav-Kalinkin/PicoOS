@@ -11,7 +11,7 @@ pub use cpu::without_interrupts;
 #[path = "yield.rs"]
 mod task_yield;
 
-pub use restore::restore_verified_resume_frame;
+pub use restore::{idle_exit_from_trap, mret_to_trap_image, restore_verified_resume_frame};
 
 pub use task_yield::capture_task_cpu_context;
 
@@ -55,7 +55,7 @@ pub fn init_exceptions() {
     crate::drivers::uart::write_line("");
 }
 
-fn trap_stack_top() -> u64 {
+pub(crate) fn trap_stack_top() -> u64 {
     symbol_addr(core::ptr::addr_of!(__trap_stack_top))
 }
 

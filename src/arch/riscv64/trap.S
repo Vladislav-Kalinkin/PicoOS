@@ -1,10 +1,12 @@
 .section .text.trap
 .align 8
 .global trap_vector
+.global trap_return
 
 trap_vector:
     csrrw sp, mscratch, sp
-    addi sp, sp, -232
+    /* Riscv64TrapFrame is 248 bytes (gp/tp after s11). */
+    addi sp, sp, -248
 
     sd t0, 16(sp)
     csrr t0, mscratch
@@ -39,10 +41,13 @@ trap_vector:
     sd s9, 208(sp)
     sd s10, 216(sp)
     sd s11, 224(sp)
+    sd gp, 232(sp)
+    sd tp, 240(sp)
 
     mv a0, sp
     call riscv64_trap_handler
 
+trap_return:
     la t6, __trap_stack_top
     csrw mscratch, t6
 
@@ -76,6 +81,8 @@ trap_vector:
     ld s9, 208(sp)
     ld s10, 216(sp)
     ld s11, 224(sp)
+    ld gp, 232(sp)
+    ld tp, 240(sp)
 
     ld sp, 0(sp)
 

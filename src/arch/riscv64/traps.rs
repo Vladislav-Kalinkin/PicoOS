@@ -2,7 +2,7 @@ use crate::arch;
 use crate::arch::riscv64::cpu;
 use crate::arch::riscv64::timer;
 use crate::drivers::uart;
-use crate::kernel::trap_frame::Riscv64TrapFrame;
+use crate::kernel::trap_frame::{Riscv64TrapFrame, TrapImage};
 
 const TIMER_HZ: u64 = 1;
 
@@ -17,9 +17,6 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     if is_interrupt && code == 7 {
         handle_timer_interrupt(frame);
-        crate::kernel::cpu::set_in_trap(false);
-        arch::enable_irq();
-        return;
     }
 
     let mepc = cpu::mepc();
@@ -127,13 +124,19 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
     }
 }
 
-fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
+fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) -> ! {
     timer::disarm_timer();
 
     let saved_sp = interrupted_sp(frame);
     let saved_pc = cpu::mepc();
+    let saved_mstatus = cpu::mstatus();
 
-    let saved_task = crate::kernel::task::scheduler::save_current_context(saved_sp, saved_pc);
+    let interrupted_worker = crate::kernel::cpu::current();
+    if let Some(id) = interrupted_worker {
+        let image = unsafe { TrapImage::from_frame(&*frame, saved_pc, saved_mstatus) };
+        let _ = crate::kernel::task::table::save_preempted_trap_image(id, &image);
+        let _ = crate::kernel::task::scheduler::save_current_context(saved_sp, saved_pc);
+    }
 
     let tick = crate::kernel::ticks::increment();
     let woke_tasks = crate::kernel::task::wake_sleeping_tasks(tick);
@@ -142,7 +145,7 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     uart::write_dec_u64(tick);
 
     uart::write_str(" saved current: ");
-    match saved_task {
+    match interrupted_worker {
         Some(id) => {
             crate::kernel::task::scheduler::print_task_name(id);
             crate::kernel::task::print_task_context_values(saved_sp, saved_pc);
@@ -150,17 +153,15 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
         None => uart::write_str("none"),
     }
 
-    let decided_next = crate::kernel::task::scheduler::decide_next_task_dry_run();
-    #[cfg(feature = "timer_preemption_prototype")]
-    let decided_resumable = crate::kernel::task::scheduler::decide_next_resumable_task_dry_run();
+    let next = crate::kernel::task::scheduler::prepare_timer_switch(interrupted_worker);
 
     uart::write_str(" decision next: ");
-    match decided_next {
+    match next {
         Some(id) => crate::kernel::task::scheduler::print_task_name(id),
-        None => uart::write_str("none"),
+        None => uart::write_str("idle"),
     }
 
-    uart::write_str(" mode: dry-run");
+    uart::write_str(" mode: mret");
     uart::write_str(" woke: ");
     uart::write_dec_u64(woke_tasks as u64);
 
@@ -173,57 +174,40 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     uart::write_line("");
     crate::kernel::log::info("timer", "scheduler decision computed");
 
-    #[cfg(feature = "timer_preemption_prototype")]
-    let preemption_target = {
-        #[cfg(feature = "timer_preemption_selftest")]
-        {
-            decided_resumable.or_else(|| {
-                saved_task.filter(|id| crate::kernel::task::get_task_resume_frame(*id).is_some())
-            })
-        }
-
-        #[cfg(not(feature = "timer_preemption_selftest"))]
-        {
-            decided_resumable
-        }
-    };
-
-    #[cfg(feature = "timer_preemption_prototype")]
-    if let Some(next_id) = preemption_target {
-        crate::kernel::task::scheduler::force_current_task(next_id);
-        crate::kernel::log::ok("timer", "preemption prototype: switching to resumable task");
-        crate::drivers::uart::write_line("timer preemption result: OK");
-
-        let Some(stack_start) = crate::kernel::task::get_task_stack_start(next_id) else {
-            crate::kernel::log::fail("timer", "preemption missing task stack start");
-            arch::halt();
-        };
-        let Some(stack_top) = crate::kernel::task::get_task_stack_top(next_id) else {
-            crate::kernel::log::fail("timer", "preemption missing task stack top");
-            arch::halt();
-        };
-        crate::kernel::cpu::set_current(next_id);
-        crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
-
-        let Some(frame) = crate::kernel::task::get_task_resume_frame(next_id) else {
-            crate::kernel::log::fail("timer", "resume frame missing after decision");
-            arch::halt();
-        };
-
-        timer::arm_timer_hz(TIMER_HZ);
-        arch::reset_trap_stack_pointer_for_next_trap();
-        crate::arch::restore_verified_resume_frame(frame);
-    }
-
     if crate::kernel::ticks::is_test_complete() {
         cpu::disable_machine_timer_interrupt();
-
         crate::kernel::test::print_test_complete();
-
         arch::halt();
     }
 
     timer::arm_timer_hz(TIMER_HZ);
+
+    match next {
+        Some(id) => {
+            let fresh = crate::kernel::task::table::is_fresh_ready_task(id);
+            let Some(image) = (if fresh {
+                crate::kernel::task::scheduler::build_fresh_trap_image(id)
+            } else {
+                crate::kernel::task::scheduler::trap_image_for_resume(id)
+            }) else {
+                crate::arch::idle_exit_from_trap();
+            };
+
+            crate::kernel::task::scheduler::arm_worker_for_mret(id, fresh);
+
+            #[cfg(any(
+                feature = "timer_preemption_prototype",
+                feature = "timer_preemption_selftest"
+            ))]
+            {
+                crate::kernel::log::ok("timer", "preemption: mret to worker");
+                uart::write_line("timer preemption result: OK");
+            }
+
+            crate::arch::mret_to_trap_image(&image);
+        }
+        None => crate::arch::idle_exit_from_trap(),
+    }
 }
 
 const fn interrupted_sp(frame: *const Riscv64TrapFrame) -> u64 {
