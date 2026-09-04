@@ -8,13 +8,24 @@ pub enum TrapFaultClassification {
 }
 
 pub fn classify_current_trap_fault() -> TrapFaultClassification {
-    match crate::kernel::cpu::trap_execution_context() {
-        crate::kernel::cpu::TrapExecutionContext::Kernel => {
-            TrapFaultClassification::KernelFault
-        }
+    use crate::arch;
+    use crate::arch::riscv64::cpu as hart;
+    use crate::kernel::cpu;
 
-        crate::kernel::cpu::TrapExecutionContext::Task => TrapFaultClassification::TaskFault,
+    if cpu::current().is_none() {
+        return TrapFaultClassification::KernelFault;
     }
+
+    if hart::trapped_from_user() {
+        return TrapFaultClassification::TaskFault;
+    }
+
+    let mtval = hart::mtval();
+    if arch::is_trap_stack_addr(mtval) || arch::is_kernel_stack_addr(mtval) {
+        return TrapFaultClassification::KernelFault;
+    }
+
+    TrapFaultClassification::TaskFault
 }
 
 #[allow(dead_code)]

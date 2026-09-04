@@ -63,11 +63,15 @@ pub fn reset_trap_stack_pointer_for_next_trap() {
     cpu::set_mscratch(trap_stack_top());
 }
 
-#[cfg(feature = "kernel_fault_guard_test")]
 pub fn is_trap_stack_addr(addr: u64) -> bool {
     let top = trap_stack_top();
 
     addr >= top - 4096 && addr < top
+}
+
+pub fn is_kernel_stack_addr(addr: u64) -> bool {
+    let top = crate::kernel::memory::stack_top();
+    addr >= top - 0x10000 && addr < top
 }
 
 pub fn enable_irq() {

@@ -124,12 +124,15 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     #[cfg(not(feature = "scheduler_fault_lifecycle_test"))]
     {
-        if crate::kernel::cpu::current().is_some() && cpu::trapped_from_user() {
-            crate::kernel::task::fault::record_and_switch_user_fault(cause, mepc, mtval);
+        match crate::kernel::task::fault::classify_current_trap_fault() {
+            crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
+                crate::kernel::task::fault::record_and_switch_user_fault(cause, mepc, mtval);
+            }
+            crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
+                crate::kernel::log::fail("trap", "system halted after trap");
+                arch::halt();
+            }
         }
-
-        crate::kernel::log::fail("trap", "system halted after trap");
-        arch::halt();
     }
 }
 
