@@ -80,11 +80,3 @@ trap_vector:
     ld sp, 0(sp)
 
     mret
-
-.section .bss.trap_stack
-.align 12
-.global __trap_stack_bottom
-__trap_stack_bottom:
-    .skip 4096
-.global __trap_stack_top
-__trap_stack_top:

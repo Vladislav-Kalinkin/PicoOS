@@ -1,6 +1,7 @@
 use core::arch::asm;
 
 pub mod cpu;
+pub mod pmp;
 pub mod restore;
 pub mod timer;
 pub mod traps;

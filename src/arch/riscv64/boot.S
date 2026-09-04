@@ -15,6 +15,16 @@ clear_bss_loop:
     j clear_bss_loop
 
 clear_bss_done:
+    la t0, __trap_stack_bottom
+    la t1, __trap_stack_top
+
+clear_trap_stack_loop:
+    bgeu t0, t1, clear_trap_stack_done
+    sd zero, 0(t0)
+    addi t0, t0, 8
+    j clear_trap_stack_loop
+
+clear_trap_stack_done:
     call kernel_main
 
 hang:

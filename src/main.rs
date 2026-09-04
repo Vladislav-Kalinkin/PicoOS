@@ -64,6 +64,7 @@ pub extern "C" fn kernel_main() -> ! {
     #[cfg(not(feature = "selftest"))]
     {
         arch::init_exceptions();
+        arch::pmp::init();
         arch::print_cpu_info();
         kernel::test::run_runtime_selftest_bootstrap();
 

@@ -199,3 +199,96 @@ pub fn disable_machine_timer_interrupt() {
         asm!("li t0, 0x80", "csrc mie, t0", options(nomem, nostack));
     }
 }
+
+macro_rules! csr_rw {
+    ($read:ident, $write:ident, $csr:literal) => {
+        #[inline(always)]
+        pub fn $read() -> u64 {
+            let value: u64;
+            unsafe {
+                asm!(
+                    concat!("csrr {0}, ", $csr),
+                    out(reg) value,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            value
+        }
+
+        #[inline(always)]
+        pub fn $write(value: u64) {
+            unsafe {
+                asm!(
+                    concat!("csrw ", $csr, ", {0}"),
+                    in(reg) value,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    };
+}
+
+csr_rw!(pmpcfg0, set_pmpcfg0, "pmpcfg0");
+csr_rw!(pmpcfg2, set_pmpcfg2, "pmpcfg2");
+csr_rw!(pmpaddr0, set_pmpaddr0, "pmpaddr0");
+csr_rw!(pmpaddr1, set_pmpaddr1, "pmpaddr1");
+csr_rw!(pmpaddr2, set_pmpaddr2, "pmpaddr2");
+csr_rw!(pmpaddr3, set_pmpaddr3, "pmpaddr3");
+csr_rw!(pmpaddr4, set_pmpaddr4, "pmpaddr4");
+csr_rw!(pmpaddr5, set_pmpaddr5, "pmpaddr5");
+csr_rw!(pmpaddr6, set_pmpaddr6, "pmpaddr6");
+csr_rw!(pmpaddr7, set_pmpaddr7, "pmpaddr7");
+csr_rw!(pmpaddr8, set_pmpaddr8, "pmpaddr8");
+csr_rw!(pmpaddr9, set_pmpaddr9, "pmpaddr9");
+csr_rw!(pmpaddr10, set_pmpaddr10, "pmpaddr10");
+csr_rw!(pmpaddr11, set_pmpaddr11, "pmpaddr11");
+csr_rw!(pmpaddr12, set_pmpaddr12, "pmpaddr12");
+csr_rw!(pmpaddr13, set_pmpaddr13, "pmpaddr13");
+csr_rw!(pmpaddr14, set_pmpaddr14, "pmpaddr14");
+csr_rw!(pmpaddr15, set_pmpaddr15, "pmpaddr15");
+
+pub const PMP_ENTRIES: usize = 16;
+
+pub fn pmpaddr(index: usize) -> u64 {
+    match index {
+        0 => pmpaddr0(),
+        1 => pmpaddr1(),
+        2 => pmpaddr2(),
+        3 => pmpaddr3(),
+        4 => pmpaddr4(),
+        5 => pmpaddr5(),
+        6 => pmpaddr6(),
+        7 => pmpaddr7(),
+        8 => pmpaddr8(),
+        9 => pmpaddr9(),
+        10 => pmpaddr10(),
+        11 => pmpaddr11(),
+        12 => pmpaddr12(),
+        13 => pmpaddr13(),
+        14 => pmpaddr14(),
+        15 => pmpaddr15(),
+        _ => 0,
+    }
+}
+
+pub fn set_pmpaddr(index: usize, value: u64) {
+    match index {
+        0 => set_pmpaddr0(value),
+        1 => set_pmpaddr1(value),
+        2 => set_pmpaddr2(value),
+        3 => set_pmpaddr3(value),
+        4 => set_pmpaddr4(value),
+        5 => set_pmpaddr5(value),
+        6 => set_pmpaddr6(value),
+        7 => set_pmpaddr7(value),
+        8 => set_pmpaddr8(value),
+        9 => set_pmpaddr9(value),
+        10 => set_pmpaddr10(value),
+        11 => set_pmpaddr11(value),
+        12 => set_pmpaddr12(value),
+        13 => set_pmpaddr13(value),
+        14 => set_pmpaddr14(value),
+        15 => set_pmpaddr15(value),
+        _ => {}
+    }
+}
