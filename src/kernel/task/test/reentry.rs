@@ -132,10 +132,7 @@ pub fn handle_scheduler_reentry_after_task_return() {
         crate::kernel::task::scheduler::TaskReturnHandleResult::NoRunnableTask => {
             crate::drivers::uart::write_line("  action: completion check");
 
-            #[cfg(all(
-                feature = "scheduler_resume_loop_test",
-                feature = "real_resume_restore_jump"
-            ))]
+            #[cfg(feature = "scheduler_resume_loop_test")]
             {
                 #[cfg(feature = "task_fault_test")]
                 {
@@ -183,11 +180,7 @@ pub fn test_kernel_fault_guard() -> ! {
     crate::arch::halt();
 }
 
-#[cfg(all(
-    target_arch = "riscv64",
-    feature = "real_resume_restore_jump",
-    feature = "scheduler_resume_loop_test"
-))]
+#[cfg(feature = "scheduler_resume_loop_test")]
 fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");

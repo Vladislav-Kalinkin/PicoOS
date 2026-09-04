@@ -60,22 +60,16 @@ pub fn fail(scope: &str, message: &str) {
     uart::write_line(message);
 }
 
-#[cfg(any(
-    feature = "scheduler_verbose_dispatch_trace",
-    feature = "verbose_resume_debug"
-))]
-#[allow(dead_code)]
 pub fn trace(scope: &str, message: &str) {
+    if !cfg!(any(
+        feature = "scheduler_verbose_dispatch_trace",
+        feature = "verbose_resume_debug"
+    )) {
+        return;
+    }
     if !scope_enabled(scope) {
         return;
     }
     prefix("TRACE", scope);
     uart::write_line(message);
 }
-
-#[cfg(not(any(
-    feature = "scheduler_verbose_dispatch_trace",
-    feature = "verbose_resume_debug"
-)))]
-#[allow(dead_code)]
-pub fn trace(_scope: &str, _message: &str) {}

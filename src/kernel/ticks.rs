@@ -2,11 +2,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 static TICKS: AtomicU64 = AtomicU64::new(0);
 
-#[cfg(any(
-    feature = "task_yield_test",
-    feature = "kernel_fault_guard_test",
-    feature = "timer_preemption_prototype"
-))]
+#[cfg(any(feature = "task_yield_test", feature = "kernel_fault_guard_test"))]
 pub const MAX_TEST_TICKS: u64 = 5;
 
 pub fn reset() {
@@ -22,19 +18,11 @@ pub fn get() -> u64 {
 }
 
 pub fn is_test_complete() -> bool {
-    #[cfg(any(
-        feature = "task_yield_test",
-        feature = "kernel_fault_guard_test",
-        feature = "timer_preemption_prototype"
-    ))]
+    #[cfg(any(feature = "task_yield_test", feature = "kernel_fault_guard_test"))]
     {
         get() >= MAX_TEST_TICKS
     }
-    #[cfg(not(any(
-        feature = "task_yield_test",
-        feature = "kernel_fault_guard_test",
-        feature = "timer_preemption_prototype"
-    )))]
+    #[cfg(not(any(feature = "task_yield_test", feature = "kernel_fault_guard_test")))]
     {
         false
     }

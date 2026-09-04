@@ -1,6 +1,5 @@
 use crate::drivers::uart;
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TrapFaultClassification {
     KernelFault,
@@ -47,7 +46,6 @@ pub fn print_current_trap_fault_classification() {
     }
 }
 
-#[allow(dead_code)]
 pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<usize> {
     let Some(task_id) = crate::kernel::cpu::current() else {
         crate::kernel::log::fail("fault", "record task fault with no current task");

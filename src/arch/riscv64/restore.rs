@@ -66,7 +66,6 @@ pub fn idle_exit_from_trap() -> ! {
     }
 }
 
-#[allow(dead_code)]
 pub fn restore_verified_resume_frame(frame: crate::kernel::task::cpu_context::TaskCpuContext) -> ! {
     crate::drivers::uart::write_line("arch restore verified resume frame:");
 
@@ -163,43 +162,21 @@ unsafe fn restore_resume_frame_asm_stub(
     crate::drivers::uart::write_hex_u64(frame.resume_pc);
     crate::drivers::uart::write_line("");
 
-    #[cfg(feature = "real_resume_restore_test")]
-    {
-        crate::drivers::uart::write_line(" real resume restore feature enabled");
-        print_riscv_real_resume_success_marker_plan();
+    print_riscv_real_resume_success_marker_plan();
 
-        if !print_riscv_real_restore_attempt_guard(frame) {
-            crate::drivers::uart::write_line(" real RISC-V restore attempt blocked by guard");
-            crate::arch::halt();
-        }
-
-        crate::drivers::uart::write_line(" real RISC-V restore attempt guard passed");
-
-        #[cfg(feature = "real_resume_restore_jump")]
-        {
-            crate::drivers::uart::write_line(" decision: real restore jump enabled");
-            unsafe {
-                restore_resume_frame_real_jump(frame);
-            }
-        }
-
-        #[cfg(not(feature = "real_resume_restore_jump"))]
-        {
-            crate::drivers::uart::write_line(
-                " decision: real restore still disabled without real_resume_restore_jump",
-            );
-            crate::arch::halt();
-        }
+    if !print_riscv_real_restore_attempt_guard(frame) {
+        crate::drivers::uart::write_line(" real RISC-V restore attempt blocked by guard");
+        crate::arch::halt();
     }
 
-    #[cfg(not(feature = "real_resume_restore_test"))]
-    {
-        crate::drivers::uart::write_line(" safe mode: real asm restore disabled");
-        crate::arch::halt();
+    crate::drivers::uart::write_line(" real RISC-V restore attempt guard passed");
+    crate::drivers::uart::write_line(" decision: real restore jump enabled");
+
+    unsafe {
+        restore_resume_frame_real_jump(frame);
     }
 }
 
-#[cfg(feature = "real_resume_restore_test")]
 fn print_riscv_real_resume_success_marker_plan() {
     #[cfg(feature = "scheduler_resume_loop_test")]
     {
@@ -243,7 +220,6 @@ fn print_riscv_real_resume_success_marker_plan() {
     }
 }
 
-#[cfg(feature = "real_resume_restore_test")]
 fn print_riscv_real_restore_attempt_guard(
     frame: crate::kernel::task::cpu_context::TaskCpuContext,
 ) -> bool {
@@ -254,9 +230,6 @@ fn print_riscv_real_restore_attempt_guard(
     let return_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(frame.return_pc);
     let task_sp_nonzero = frame.sp != 0;
     let ra_matches_resume_pc = frame.ra == frame.resume_pc;
-
-    crate::drivers::uart::write_str(" feature real_resume_restore_test: ");
-    crate::drivers::uart::write_line("enabled");
 
     crate::drivers::uart::write_str(" arch: ");
     crate::drivers::uart::write_line("riscv64");
@@ -301,10 +274,6 @@ fn print_riscv_real_restore_attempt_guard(
     ok
 }
 
-#[cfg(all(
-    feature = "real_resume_restore_test",
-    feature = "real_resume_restore_jump"
-))]
 #[inline(never)]
 unsafe fn restore_resume_frame_real_jump(
     frame: crate::kernel::task::cpu_context::TaskCpuContext,

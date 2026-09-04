@@ -4,6 +4,7 @@ mod fault;
 mod handoff;
 mod invariants;
 mod reentry;
+#[cfg(feature = "task_yield_test")]
 mod resume;
 use crate::kernel::cpu;
 
@@ -46,12 +47,7 @@ pub use handoff::*;
     feature = "two_yield_task_test"
 ))]
 pub use reentry::*;
-#[cfg(any(
-    feature = "resume_candidate_test",
-    feature = "resume_preflight_test",
-    feature = "resume_dry_run_test",
-    feature = "resume_restore_test"
-))]
+#[cfg(feature = "task_yield_test")]
 pub use resume::*;
 
 #[cfg(all(not(feature = "task_yield_test"), feature = "selftest"))]
@@ -133,7 +129,8 @@ fn idle_task() {
 #[cfg(not(any(
     feature = "selftest",
     feature = "task_yield_test",
-    feature = "kernel_fault_guard_test"
+    feature = "kernel_fault_guard_test",
+    feature = "scenario_resume"
 )))]
 fn worker_yield_main() {
     crate::kernel::sys::u_sys_log(b"worker_yield: start\n");
@@ -145,7 +142,8 @@ fn worker_yield_main() {
 #[cfg(not(any(
     feature = "selftest",
     feature = "task_yield_test",
-    feature = "kernel_fault_guard_test"
+    feature = "kernel_fault_guard_test",
+    feature = "scenario_resume"
 )))]
 fn worker_sleep_main() {
     crate::kernel::sys::u_sys_log(b"worker_sleep: start\n");
@@ -154,12 +152,35 @@ fn worker_sleep_main() {
     }
 }
 
+#[cfg(not(any(
+    feature = "selftest",
+    feature = "task_yield_test",
+    feature = "kernel_fault_guard_test",
+    feature = "scenario_resume"
+)))]
 fn worker_pmp_deny() {
     crate::kernel::sys::u_sys_log(b"pmp deny probe: store to .data\n");
     unsafe {
         core::ptr::write_volatile(crate::kernel::memory::data_start() as *mut u64, 0xDEAD);
     }
     crate::kernel::sys::u_sys_log(b"pmp deny probe: FAILED\n");
+    crate::kernel::sys::u_sys_exit();
+}
+
+#[cfg(all(
+    not(any(
+        feature = "selftest",
+        feature = "task_yield_test",
+        feature = "kernel_fault_guard_test"
+    )),
+    feature = "scenario_resume"
+))]
+fn worker_two_yield() {
+    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 1\n");
+    crate::kernel::sys::u_sys_yield();
+    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 2\n");
+    crate::kernel::sys::u_sys_yield();
+    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 3\n");
     crate::kernel::sys::u_sys_exit();
 }
 
@@ -170,10 +191,21 @@ fn worker_pmp_deny() {
 )))]
 pub fn spawn_default_image() {
     crate::kernel::task::table::init();
-    let _ = create_task("worker-yield", worker_yield_main);
-    let _ = create_task("worker-sleep", worker_sleep_main);
-    let _ = create_task("worker-pmp-deny", worker_pmp_deny);
-    uart::write_line("default image: idle + worker_yield + worker_sleep");
+
+    #[cfg(feature = "scenario_resume")]
+    {
+        let _ = create_task("worker-resume", worker_two_yield);
+        uart::write_line("resume image: U-mode two-yield worker");
+    }
+
+    #[cfg(not(feature = "scenario_resume"))]
+    {
+        let _ = create_task("worker-yield", worker_yield_main);
+        let _ = create_task("worker-sleep", worker_sleep_main);
+        let _ = create_task("worker-pmp-deny", worker_pmp_deny);
+        uart::write_line("default image: idle + worker_yield + worker_sleep");
+    }
+
     print_tasks();
 }
 

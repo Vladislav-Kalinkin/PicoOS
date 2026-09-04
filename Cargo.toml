@@ -19,7 +19,14 @@ panic = "abort"
 [features]
 # Public scenario selectors (PR21). Internal resume_* / scheduler_* flags
 # remain as the implementation of these clusters.
-scenario_resume = ["task_resume_selftest"]
+#
+# Always-on (not a feature): U-mode mret restore, timer preemption via mret,
+# YieldImage s0–s11 restore jump, reap of Finished/Faulted on the ecall path,
+# scheduler start via mret. Scenario flags pick workers and UART contracts.
+#
+# scenario_resume rides the default U-mode ecall/mret path (not the M-mode
+# yield_now selftest). Other scenario_* clusters still use task_yield_test.
+scenario_resume = []
 scenario_sleep = ["task_sleep_runtime_e2e_selftest"]
 scenario_handoff = ["two_task_resume_handoff_selftest"]
 scenario_fault = ["scheduler_fault_lifecycle_test"]
@@ -31,12 +38,6 @@ scenario_reentry = ["scheduler_reentry_selftest"]
 
 selftest = []
 task_yield_test = []
-resume_candidate_test = []
-resume_preflight_test = []
-resume_dry_run_test = []
-resume_restore_test = []
-real_resume_restore_test = []
-real_resume_restore_jump = []
 two_yield_task_test = []
 scheduler_resume_loop_test = []
 verbose_resume_debug = []
@@ -56,8 +57,6 @@ log_trap = []
 log_timer = []
 log_fault = []
 log_sleep = []
-timer_preemption_prototype = []
-
 two_task_resume_handoff_selftest = [
   "scheduler_reentry_selftest",
   "two_task_resume_handoff_test",
@@ -84,28 +83,18 @@ scheduler_reentry_selftest = [
 
 task_resume_selftest = [
   "task_yield_test",
-  "resume_candidate_test",
-  "resume_preflight_test",
-  "resume_dry_run_test",
-  "resume_restore_test",
-  "real_resume_restore_test",
-  "real_resume_restore_jump",
   "two_yield_task_test",
   "scheduler_resume_loop_test",
 ]
 
 timer_preemption_selftest = [
   "task_yield_test",
-  "timer_preemption_prototype",
 ]
 
 task_sleep_runtime_e2e_selftest = [
   "task_yield_test",
   "task_sleep_test",
   "task_sleep_runtime_e2e_test",
-  "timer_preemption_prototype",
-  "real_resume_restore_test",
-  "real_resume_restore_jump",
 ]
 
 scheduler_fault_lifecycle_test = [
@@ -115,9 +104,6 @@ scheduler_fault_lifecycle_test = [
   "scheduler_dispatch_test",
   "scheduler_run_test",
   "scheduler_resume_loop_test",
-  "resume_restore_test",
-  "real_resume_restore_test",
-  "real_resume_restore_jump",
 ]
 
 [lints.rust]

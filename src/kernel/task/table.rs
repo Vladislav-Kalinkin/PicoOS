@@ -65,7 +65,6 @@ pub struct TaskReturnSnapshot {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum TaskFaultReason {
     Breakpoint,
     InstructionAccessFault,
@@ -76,7 +75,6 @@ pub enum TaskFaultReason {
 }
 
 impl TaskFaultReason {
-    #[allow(dead_code)]
     /// Map `mcause` to a concrete fault reason.
     /// RISC-V Privileged Spec, Table 16 (synchronous exceptions).
     pub const fn from_mcause(cause: u64) -> Self {
@@ -111,13 +109,9 @@ pub struct Task {
     pub has_started: bool,
     pub can_resume: bool,
     pub last_return_kind: TaskReturnKind,
-    #[allow(dead_code)]
     pub last_fault_reason: Option<TaskFaultReason>,
-    #[allow(dead_code)]
     pub last_fault_mcause: Option<u64>,
-    #[allow(dead_code)]
     pub last_fault_mepc: Option<u64>,
-    #[allow(dead_code)]
     pub last_fault_mtval: Option<u64>,
     pub sleep_until_tick: Option<u64>,
 }
@@ -387,12 +381,10 @@ pub fn get_task_entry(id: usize) -> Option<TaskEntry> {
     with_task(id, |task| task.entry)?
 }
 
-#[allow(dead_code)]
 pub fn get_task_stack_start(id: usize) -> Option<u64> {
     with_task(id, |task| task.stack_start)
 }
 
-#[allow(dead_code)]
 pub fn get_task_stack_top(id: usize) -> Option<u64> {
     with_task(id, |task| task.stack_top)
 }
@@ -417,7 +409,6 @@ pub fn find_next_ready_after(current_id: Option<usize>) -> Option<usize> {
     find_next_task_after(current_id, |task| matches!(task.state, TaskState::Ready))
 }
 
-#[allow(dead_code)]
 pub fn find_next_dispatchable_after(current_id: Option<usize>) -> Option<usize> {
     find_next_task_after(current_id, |task| is_dispatchable_task(task.id))
 }
@@ -467,7 +458,6 @@ pub fn can_apply_task_transition(id: usize, transition: TaskLifecycleTransition)
     get_task_state(id).is_some_and(|state| can_transition_from(state, transition))
 }
 
-#[allow(dead_code)]
 pub fn mark_task_started(id: usize) -> bool {
     with_task_mut(id, |task| {
         if !can_transition_from(task.state, TaskLifecycleTransition::Start) {
@@ -499,6 +489,7 @@ pub fn print_task_name_by_id(id: usize) {
     }
 }
 
+#[allow(dead_code)]
 pub fn print_task_entry_by_id(id: usize) {
     match get_task_entry(id) {
         Some(entry) => uart::write_hex_u64(entry as *const () as usize as u64),
@@ -846,7 +837,6 @@ pub fn is_task_ready(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Ready))
 }
 
-#[allow(dead_code)]
 pub fn is_task_running(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Running))
 }
@@ -869,7 +859,6 @@ pub fn is_ready_running_faulted_finished_invariant_ok(id: usize) -> bool {
     }
 }
 
-#[allow(dead_code)]
 pub fn can_dispatch_from_ready(id: usize) -> bool {
     is_task_ready(id) && is_ready_running_faulted_finished_invariant_ok(id)
 }
@@ -894,7 +883,6 @@ pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
     get_task_return_snapshot(id)
 }
 
-#[allow(dead_code)]
 pub fn is_resumable_task(id: usize) -> bool {
     can_dispatch_from_ready(id)
         && matches!(can_task_resume(id), Some(true))
@@ -920,7 +908,6 @@ pub fn is_resume_frame_safe_for_task(id: usize) -> bool {
         )
 }
 
-#[allow(dead_code)]
 pub fn is_fresh_ready_task(id: usize) -> bool {
     can_dispatch_from_ready(id) && !has_started(id) && matches!(can_task_resume(id), Some(false))
 }
@@ -929,7 +916,6 @@ pub fn is_dispatchable_task(id: usize) -> bool {
     is_resumable_task(id) || is_fresh_ready_task(id)
 }
 
-#[allow(dead_code)]
 pub fn set_task_fault_info(
     id: usize,
     reason: TaskFaultReason,
@@ -946,7 +932,6 @@ pub fn set_task_fault_info(
     .is_some()
 }
 
-#[allow(dead_code)]
 pub fn record_task_fault(id: usize, mcause: u64, mepc: u64, mtval: u64) -> Option<TaskFaultReason> {
     let reason = TaskFaultReason::from_mcause(mcause);
 
@@ -977,7 +962,6 @@ pub fn get_task_fault_mtval(id: usize) -> Option<u64> {
     with_task(id, |task| task.last_fault_mtval)?
 }
 
-#[allow(dead_code)]
 pub fn print_task_fault_reason(reason: TaskFaultReason) {
     match reason {
         TaskFaultReason::Breakpoint => uart::write_str("breakpoint"),
@@ -1004,7 +988,6 @@ pub fn get_task_id_at_slot(slot: usize) -> Option<usize> {
     })
 }
 
-#[allow(dead_code)]
 pub fn is_task_finished(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Finished))
 }
@@ -1013,7 +996,6 @@ pub fn is_task_faulted(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Faulted))
 }
 
-#[allow(dead_code)]
 pub fn is_terminal_task(id: usize) -> bool {
     is_task_finished(id) || is_task_faulted(id)
 }

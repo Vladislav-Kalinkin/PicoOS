@@ -101,27 +101,21 @@ pub fn task_fault() -> ! {
 
 #[allow(dead_code)]
 pub fn yield_now() {
-    #[cfg(feature = "task_yield_test")]
-    {
-        crate::drivers::uart::write_line("task yield requested");
-    }
+    crate::drivers::uart::write_line("task yield requested");
 
     let kernel_sp = crate::kernel::cpu::kernel_sp_before_task();
     let return_pc = crate::kernel::cpu::kernel_return_pc();
 
-    #[cfg(feature = "task_yield_test")]
-    {
-        crate::drivers::uart::write_str("yield saved kernel SP: ");
-        crate::drivers::uart::write_hex_u64(kernel_sp);
-        crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_str("yield saved kernel SP: ");
+    crate::drivers::uart::write_hex_u64(kernel_sp);
+    crate::drivers::uart::write_line("");
 
-        crate::drivers::uart::write_str("yield return PC: ");
-        crate::drivers::uart::write_hex_u64(return_pc);
-        crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_str("yield return PC: ");
+    crate::drivers::uart::write_hex_u64(return_pc);
+    crate::drivers::uart::write_line("");
 
-        crate::drivers::uart::write_line("yielding to kernel via RISC-V boundary...");
-        crate::drivers::uart::write_line("yield ABI: save s0-s11 at boundary");
-    }
+    crate::drivers::uart::write_line("yielding to kernel via RISC-V boundary...");
+    crate::drivers::uart::write_line("yield ABI: save s0-s11 at boundary");
 
     unsafe {
         crate::arch::task_yield_boundary(kernel_sp, return_pc);

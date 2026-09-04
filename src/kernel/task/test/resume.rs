@@ -1,10 +1,8 @@
 #![allow(unused_imports)]
 use super::invariants;
 use crate::drivers::uart;
-#[cfg(feature = "resume_restore_test")]
 use crate::kernel::cpu::{set_current, set_current_stack_bounds};
 
-#[cfg(feature = "resume_restore_test")]
 pub fn test_resume_restore() {
     uart::write_line("");
     uart::write_line("resume restore test:");
@@ -12,25 +10,16 @@ pub fn test_resume_restore() {
     let Some(task_id) = crate::kernel::task::table::find_first_resumable_task() else {
         crate::drivers::uart::write_line("selected task: none");
 
-        #[cfg(feature = "real_resume_restore_jump")]
-        {
-            if real_resume_jump_completion_check() {
-                crate::drivers::uart::write_line(
-                    "preflight result: SKIPPED after successful real resume jump",
-                );
-                crate::drivers::uart::write_line("real resume jump test complete");
-                crate::arch::halt();
-            }
-
-            crate::drivers::uart::write_line("preflight result: FAILED");
+        if real_resume_jump_completion_check() {
+            crate::drivers::uart::write_line(
+                "preflight result: SKIPPED after successful real resume jump",
+            );
+            crate::drivers::uart::write_line("real resume jump test complete");
             crate::arch::halt();
         }
 
-        #[cfg(not(feature = "real_resume_restore_jump"))]
-        {
-            crate::drivers::uart::write_line("preflight result: FAILED");
-            crate::arch::halt();
-        }
+        crate::drivers::uart::write_line("preflight result: FAILED");
+        crate::arch::halt();
     };
 
     uart::write_str("selected task: ");
@@ -78,7 +67,6 @@ pub fn test_resume_restore() {
     crate::arch::restore_verified_resume_frame(frame);
 }
 
-#[cfg(feature = "resume_preflight_test")]
 pub fn test_resume_preflight_check() {
     uart::write_line("");
     uart::write_line("resume preflight check:");
@@ -86,23 +74,14 @@ pub fn test_resume_preflight_check() {
     let Some(task_id) = crate::kernel::task::table::find_first_resumable_task() else {
         uart::write_line("selected task: none");
 
-        #[cfg(feature = "real_resume_restore_jump")]
-        {
-            if real_resume_jump_completion_check() {
-                uart::write_line("preflight result: SKIPPED after successful real resume jump");
-                uart::write_line("real resume jump test complete");
-                crate::arch::halt();
-            }
-
-            uart::write_line("preflight result: FAILED");
+        if real_resume_jump_completion_check() {
+            uart::write_line("preflight result: SKIPPED after successful real resume jump");
+            uart::write_line("real resume jump test complete");
             crate::arch::halt();
         }
 
-        #[cfg(not(feature = "real_resume_restore_jump"))]
-        {
-            uart::write_line("preflight result: FAILED");
-            crate::arch::halt();
-        }
+        uart::write_line("preflight result: FAILED");
+        crate::arch::halt();
     };
 
     uart::write_str("selected task: ");
@@ -196,18 +175,9 @@ pub fn test_resume_preflight_check() {
 
     uart::write_line("preflight result: OK");
 
-    #[cfg(feature = "resume_dry_run_test")]
-    {
-        test_resume_dry_run();
-    }
-
-    #[cfg(not(feature = "resume_dry_run_test"))]
-    {
-        crate::arch::halt();
-    }
+    test_resume_dry_run();
 }
 
-#[cfg(feature = "resume_dry_run_test")]
 pub fn test_resume_dry_run() {
     uart::write_line("");
     uart::write_line("resume dry-run:");
@@ -310,27 +280,9 @@ pub fn test_resume_dry_run() {
         crate::arch::halt();
     }
 
-    #[cfg(feature = "resume_restore_test")]
-    {
-        test_resume_restore();
-    }
-
-    #[cfg(not(feature = "resume_restore_test"))]
-    {
-        crate::arch::halt();
-    }
+    test_resume_restore();
 }
 
-#[cfg(any(
-    feature = "resume_preflight_test",
-    feature = "resume_dry_run_test",
-    feature = "resume_restore_test",
-    feature = "real_resume_restore_test",
-    feature = "real_resume_restore_jump",
-    feature = "scheduler_resume_loop_test",
-    feature = "two_task_resume_handoff_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
 pub fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     crate::drivers::uart::write_line("  resume PC proximity check:");
 
@@ -354,73 +306,24 @@ pub fn print_resume_pc_proximity_check(task_id: usize) -> bool {
     crate::drivers::uart::write_hex_u64(context.resume_pc);
     crate::drivers::uart::write_line("");
 
-    #[cfg(any(
-        feature = "two_task_resume_handoff_test",
-        feature = "task_fault_test",
-        feature = "scheduler_resume_loop_test",
-        feature = "real_resume_restore_jump"
-    ))]
-    {
-        let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(context.resume_pc);
+    let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(context.resume_pc);
 
-        crate::drivers::uart::write_line("    mode: RISC-V yield boundary continuation");
+    crate::drivers::uart::write_line("    mode: RISC-V yield boundary continuation");
 
-        crate::drivers::uart::write_str("    resume_pc inside kernel text: ");
-        crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
-        crate::drivers::uart::write_line("");
+    crate::drivers::uart::write_str("    resume_pc inside kernel text: ");
+    crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
+    crate::drivers::uart::write_line("");
 
-        crate::drivers::uart::write_str("    result: ");
-        if resume_pc_inside_text {
-            crate::drivers::uart::write_line("OK");
-        } else {
-            crate::drivers::uart::write_line("FAILED");
-        }
-
-        resume_pc_inside_text
+    crate::drivers::uart::write_str("    result: ");
+    if resume_pc_inside_text {
+        crate::drivers::uart::write_line("OK");
+    } else {
+        crate::drivers::uart::write_line("FAILED");
     }
 
-    #[cfg(not(any(
-        feature = "two_task_resume_handoff_test",
-        feature = "task_fault_test",
-        feature = "scheduler_resume_loop_test",
-        feature = "real_resume_restore_jump"
-    )))]
-    {
-        if context.resume_pc < entry_addr {
-            crate::drivers::uart::write_line("    delta: below entry");
-            crate::drivers::uart::write_line("    result: FAILED");
-            return false;
-        }
-
-        let delta = context.resume_pc - entry_addr;
-
-        crate::drivers::uart::write_str("    delta: ");
-        crate::drivers::uart::write_hex_u64(delta);
-        crate::drivers::uart::write_line("");
-
-        let ok = delta < 0x400;
-
-        crate::drivers::uart::write_str("    result: ");
-        if ok {
-            crate::drivers::uart::write_line("OK");
-        } else {
-            crate::drivers::uart::write_line("FAILED");
-        }
-
-        ok
-    }
+    resume_pc_inside_text
 }
 
-#[cfg(any(
-    feature = "resume_preflight_test",
-    feature = "resume_dry_run_test",
-    feature = "resume_restore_test",
-    feature = "real_resume_restore_test",
-    feature = "real_resume_restore_jump",
-    feature = "scheduler_resume_loop_test",
-    feature = "two_task_resume_handoff_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
 pub fn print_resume_frame_check(task_id: usize) -> bool {
     uart::write_line("  resume frame check:");
 
@@ -480,7 +383,6 @@ pub fn print_resume_frame_check(task_id: usize) -> bool {
     ok
 }
 
-#[cfg(feature = "resume_restore_test")]
 pub fn resume_restore_precheck(task_id: usize) -> bool {
     uart::write_line("restore guarded precheck:");
 
@@ -529,7 +431,6 @@ pub fn resume_restore_precheck(task_id: usize) -> bool {
     ok
 }
 
-#[cfg(feature = "resume_candidate_test")]
 pub fn test_resume_candidate_selection() {
     print_resume_candidate_header();
 
@@ -611,10 +512,7 @@ pub fn test_resume_candidate_selection() {
                 crate::arch::halt();
             }
 
-            #[cfg(all(
-                feature = "resume_preflight_test",
-                not(feature = "scheduler_dispatch_test")
-            ))]
+            #[cfg(not(feature = "scheduler_dispatch_test"))]
             {
                 test_resume_preflight_check();
             }
@@ -623,20 +521,12 @@ pub fn test_resume_candidate_selection() {
             uart::write_line("selected resumable task: none");
             print_resume_candidate_complete();
 
-            #[cfg(all(
-                feature = "scheduler_resume_loop_test",
-                feature = "real_resume_restore_jump"
-            ))]
+            #[cfg(feature = "scheduler_resume_loop_test")]
             {
                 if real_resume_jump_completion_check() {
                     uart::write_line("scheduler resume loop result: OK");
                     uart::write_line("scheduler resume loop test complete");
 
-                    #[cfg(all(
-                        target_arch = "riscv64",
-                        feature = "real_resume_restore_jump",
-                        feature = "scheduler_resume_loop_test"
-                    ))]
                     print_riscv_cooperative_resume_milestone();
 
                     crate::arch::halt();
@@ -645,16 +535,9 @@ pub fn test_resume_candidate_selection() {
         }
     }
 
-    #[cfg(not(any(
-        feature = "resume_preflight_test",
-        feature = "resume_dry_run_test",
-        feature = "resume_restore_test",
-        feature = "scheduler_dispatch_test"
-    )))]
     crate::arch::halt();
 }
 
-#[cfg(all(feature = "resume_restore_test", feature = "real_resume_restore_jump"))]
 pub fn real_resume_jump_completion_check() -> bool {
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("real resume jump completion check:");
@@ -708,7 +591,6 @@ pub fn real_resume_jump_completion_check() -> bool {
     }
 }
 
-#[cfg(all(feature = "resume_restore_test", feature = "real_resume_restore_jump"))]
 pub fn print_task_finished_cleanly_check(task_id: usize) -> bool {
     crate::drivers::uart::write_line("");
 
@@ -763,11 +645,7 @@ pub fn print_task_finished_cleanly_check(task_id: usize) -> bool {
     state_finished && can_resume_false && last_return_exit
 }
 
-#[cfg(all(
-    target_arch = "riscv64",
-    feature = "real_resume_restore_jump",
-    feature = "scheduler_resume_loop_test"
-))]
+#[cfg(feature = "scheduler_resume_loop_test")]
 pub fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("PicoOS milestone:");
     crate::drivers::uart::write_line("  baseline: 0.1.0");
@@ -830,7 +708,6 @@ pub fn print_riscv_cooperative_resume_milestone() {
     crate::drivers::uart::write_line("    scheduler fault lifecycle feature: OK");
 }
 
-#[cfg(feature = "resume_candidate_test")]
 pub fn print_resume_candidate_header() {
     crate::drivers::uart::write_line("");
 
@@ -845,7 +722,6 @@ pub fn print_resume_candidate_header() {
     }
 }
 
-#[cfg(feature = "resume_candidate_test")]
 pub fn print_resume_candidate_complete() {
     #[cfg(feature = "scheduler_run_test")]
     {

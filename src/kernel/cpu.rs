@@ -43,12 +43,10 @@ pub fn current() -> Option<usize> {
     CPU.with(|cpu| cpu.current)
 }
 
-#[allow(dead_code)]
 pub fn set_current(id: usize) {
     CPU.with(|cpu| cpu.current = Some(id));
 }
 
-#[allow(dead_code)]
 pub fn clear_current() {
     CPU.with(|cpu| cpu.current = None);
 }
@@ -58,7 +56,6 @@ pub fn in_trap() -> bool {
     CPU.with(|cpu| cpu.in_trap)
 }
 
-#[allow(dead_code)]
 pub fn set_in_trap(value: bool) {
     CPU.with(|cpu| cpu.in_trap = value);
 }
@@ -87,7 +84,6 @@ pub fn kernel_return_pc() -> u64 {
     CPU.with(|cpu| cpu.kernel_return_pc)
 }
 
-#[allow(dead_code)]
 pub fn set_kernel_return_pc(pc: u64) {
     CPU.with(|cpu| cpu.kernel_return_pc = pc);
 }
@@ -96,22 +92,18 @@ pub fn kernel_sp_before_task() -> u64 {
     CPU.with(|cpu| cpu.kernel_sp_before_task)
 }
 
-#[allow(dead_code)]
 pub fn set_kernel_sp_before_task(sp: u64) {
     CPU.with(|cpu| cpu.kernel_sp_before_task = sp);
 }
 
-#[allow(dead_code)]
 pub fn current_stack_start() -> u64 {
     CPU.with(|cpu| cpu.current_stack_start)
 }
 
-#[allow(dead_code)]
 pub fn current_stack_top() -> u64 {
     CPU.with(|cpu| cpu.current_stack_top)
 }
 
-#[allow(dead_code)]
 pub fn set_current_stack_bounds(start: u64, top: u64) {
     CPU.with(|cpu| {
         cpu.current_stack_start = start;

@@ -30,6 +30,7 @@ pub fn u_sys_yield() {
     }
 }
 
+#[allow(dead_code)]
 pub fn u_sys_sleep(ticks: u64) {
     unsafe {
         core::arch::asm!(
@@ -143,6 +144,9 @@ fn sys_exit() -> ! {
     };
 
     let _ = crate::kernel::task::table::mark_task_finished(id);
+    crate::kernel::task::scheduler::note_default_image_return(
+        crate::kernel::task::table::TaskReturnKind::Exit,
+    );
     cpu::clear_current();
     switch_after_syscall(Some(id));
 }
@@ -189,7 +193,14 @@ fn user_buffer_ok(ptr: u64, len: u64) -> bool {
 }
 
 pub fn switch_after_syscall(after: Option<usize>) -> ! {
-    match crate::kernel::task::scheduler::prepare_timer_switch(after) {
+    let next = crate::kernel::task::scheduler::prepare_timer_switch(after);
+    if let Some(id) = after
+        && crate::kernel::task::table::is_terminal_task(id)
+    {
+        let _ = crate::kernel::task::table::destroy(id);
+    }
+
+    match next {
         Some(id) => {
             let fresh = crate::kernel::task::table::is_fresh_ready_task(id);
             let Some(image) = (if fresh {

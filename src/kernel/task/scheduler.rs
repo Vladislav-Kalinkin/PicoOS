@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::drivers::uart;
 use crate::kernel::irq_cell::IrqCell;
 use crate::kernel::task::cpu_context::TaskCpuContext;
@@ -11,7 +9,12 @@ static CURRENT_TASK_ID: IrqCell<Option<usize>> = IrqCell::new(None);
 static DEFAULT_SEEN_YIELD: IrqCell<bool> = IrqCell::new(false);
 static DEFAULT_SEEN_SLEEP: IrqCell<bool> = IrqCell::new(false);
 static DEFAULT_MARKER_PRINTED: IrqCell<bool> = IrqCell::new(false);
+#[cfg(feature = "scenario_resume")]
+static U_RESUME_YIELDS: IrqCell<u32> = IrqCell::new(0);
+#[cfg(feature = "scenario_resume")]
+static U_RESUME_MARKER_PRINTED: IrqCell<bool> = IrqCell::new(false);
 
+#[allow(dead_code)]
 pub fn init() {
     CURRENT_TASK_ID.with(|current| *current = None);
 
@@ -35,6 +38,7 @@ pub fn init() {
     uart::write_line("");
 }
 
+#[allow(dead_code)]
 pub fn schedule_next() -> Option<usize> {
     let current = CURRENT_TASK_ID.with(|id| *id);
     let next = task::find_next_ready_after(current)?;
@@ -48,24 +52,11 @@ pub fn schedule_next() -> Option<usize> {
     Some(next)
 }
 
-pub fn decide_next_task_dry_run() -> Option<usize> {
-    task::find_next_ready_after(current_task_id())
-}
-
-#[allow(dead_code)]
-pub fn decide_next_resumable_task_dry_run() -> Option<usize> {
-    let candidate = task::find_next_ready_after(current_task_id())?;
-    if task::is_resumable_task(candidate) {
-        Some(candidate)
-    } else {
-        None
-    }
-}
-
 pub fn current_task_id() -> Option<usize> {
     CURRENT_TASK_ID.with(|id| *id)
 }
 
+#[allow(dead_code)]
 pub fn print_current_task_name() {
     match current_task_id() {
         Some(id) => task::print_task_name_by_id(id),
@@ -73,6 +64,7 @@ pub fn print_current_task_name() {
     }
 }
 
+#[allow(dead_code)]
 pub fn print_current_task_entry() {
     match current_task_id() {
         Some(id) => task::print_task_entry_by_id(id),
@@ -166,9 +158,22 @@ pub fn note_default_image_return(kind: crate::kernel::task::table::TaskReturnKin
     match kind {
         crate::kernel::task::table::TaskReturnKind::Yield => {
             DEFAULT_SEEN_YIELD.with(|seen| *seen = true);
+            #[cfg(feature = "scenario_resume")]
+            U_RESUME_YIELDS.with(|count| *count = count.saturating_add(1));
         }
         crate::kernel::task::table::TaskReturnKind::Sleep => {
             DEFAULT_SEEN_SLEEP.with(|seen| *seen = true);
+        }
+        crate::kernel::task::table::TaskReturnKind::Exit => {
+            #[cfg(feature = "scenario_resume")]
+            {
+                let yields = U_RESUME_YIELDS.with(|count| *count);
+                let already = U_RESUME_MARKER_PRINTED.with(|printed| *printed);
+                if yields >= 2 && !already {
+                    U_RESUME_MARKER_PRINTED.with(|printed| *printed = true);
+                    uart::write_line("scheduler resume loop result: OK");
+                }
+            }
         }
         _ => {}
     }
@@ -731,43 +736,29 @@ fn scheduler_log_line(message: &str) {
     crate::kernel::log::trace("scheduler", message);
 }
 
+const fn scheduler_uart() -> bool {
+    cfg!(any(
+        feature = "task_yield_test",
+        feature = "scheduler_verbose_dispatch_trace"
+    ))
+}
+
 fn scheduler_log_str(message: &str) {
-    #[cfg(any(
-        feature = "task_yield_test",
-        feature = "scheduler_verbose_dispatch_trace"
-    ))]
-    crate::drivers::uart::write_str(message);
-    #[cfg(not(any(
-        feature = "task_yield_test",
-        feature = "scheduler_verbose_dispatch_trace"
-    )))]
-    let _ = message;
+    if scheduler_uart() {
+        crate::drivers::uart::write_str(message);
+    }
 }
 
 fn scheduler_log_hex(value: u64) {
-    #[cfg(any(
-        feature = "task_yield_test",
-        feature = "scheduler_verbose_dispatch_trace"
-    ))]
-    crate::drivers::uart::write_hex_u64(value);
-    #[cfg(not(any(
-        feature = "task_yield_test",
-        feature = "scheduler_verbose_dispatch_trace"
-    )))]
-    let _ = value;
+    if scheduler_uart() {
+        crate::drivers::uart::write_hex_u64(value);
+    }
 }
 
 fn scheduler_log_yes_no(value: bool) {
-    #[cfg(any(
-        feature = "task_yield_test",
-        feature = "scheduler_verbose_dispatch_trace"
-    ))]
-    crate::kernel::task::table::print_yes_no(value);
-    #[cfg(not(any(
-        feature = "task_yield_test",
-        feature = "scheduler_verbose_dispatch_trace"
-    )))]
-    let _ = value;
+    if scheduler_uart() {
+        crate::kernel::task::table::print_yes_no(value);
+    }
 }
 
 pub fn run_once() -> RunOnceResult {
@@ -1001,23 +992,11 @@ fn start_selected_task_checked(task_id: usize) -> ! {
     crate::kernel::cpu::set_current(task_id);
     crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
 
-    #[cfg(not(any(
-        feature = "task_yield_test",
-        feature = "kernel_fault_guard_test"
-    )))]
-    {
-        let Some(image) = build_fresh_trap_image(task_id) else {
-            scheduler_start_failed();
-        };
-        arm_worker_for_mret(task_id, true);
-        crate::arch::mret_to_trap_image(&image);
-    }
-
-    #[cfg(any(
-        feature = "task_yield_test",
-        feature = "kernel_fault_guard_test"
-    ))]
-    crate::kernel::task::run_task_on_own_stack(task_id);
+    let Some(image) = build_fresh_trap_image(task_id) else {
+        scheduler_start_failed();
+    };
+    arm_worker_for_mret(task_id, true);
+    crate::arch::mret_to_trap_image(&image);
 }
 
 fn scheduler_start_failed() -> ! {

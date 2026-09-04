@@ -6,12 +6,6 @@
     any(
         feature = "selftest",
         feature = "task_yield_test",
-        feature = "resume_candidate_test",
-        feature = "resume_preflight_test",
-        feature = "resume_dry_run_test",
-        feature = "resume_restore_test",
-        feature = "real_resume_restore_test",
-        feature = "real_resume_restore_jump",
         feature = "two_yield_task_test",
         feature = "scheduler_resume_loop_test",
         feature = "verbose_resume_debug",
@@ -29,7 +23,6 @@
         feature = "log_timer",
         feature = "log_fault",
         feature = "log_sleep",
-        feature = "timer_preemption_prototype",
         feature = "scheduler_fault_lifecycle_test"
     ),
     allow(dead_code, unused_imports, unreachable_code)

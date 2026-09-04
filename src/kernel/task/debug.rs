@@ -71,26 +71,11 @@ pub extern "C" fn task_return_point() -> ! {
                 }
 
                 #[cfg(all(
-                    feature = "resume_candidate_test",
+                    feature = "two_yield_task_test",
                     not(feature = "scheduler_reentry_test")
                 ))]
                 {
                     crate::kernel::task::test_resume_candidate_selection();
-                }
-
-                #[cfg(feature = "resume_preflight_test")]
-                {
-                    crate::kernel::task::test::test_resume_preflight_check();
-                }
-
-                #[cfg(feature = "resume_dry_run_test")]
-                {
-                    crate::kernel::task::test::test_resume_dry_run();
-                }
-
-                #[cfg(feature = "resume_restore_test")]
-                {
-                    crate::kernel::task::test::test_resume_restore();
                 }
 
                 #[cfg(feature = "task_sleep_runtime_e2e_test")]

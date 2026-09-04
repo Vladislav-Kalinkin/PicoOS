@@ -207,10 +207,7 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) -> ! {
 
             crate::kernel::task::scheduler::arm_worker_for_mret(id, fresh);
 
-            #[cfg(any(
-                feature = "timer_preemption_prototype",
-                feature = "timer_preemption_selftest"
-            ))]
+            #[cfg(feature = "timer_preemption_selftest")]
             {
                 crate::kernel::log::ok("timer", "preemption: mret to worker");
                 uart::write_line("timer preemption result: OK");
