@@ -2,6 +2,20 @@ mod imp {
     use core::arch::asm;
 
     #[inline(always)]
+    pub unsafe fn read8(addr: usize) -> u8 {
+        let value: u8;
+        unsafe {
+            core::arch::asm!(
+                "lbu {value}, 0({addr})",
+                addr = in(reg) addr,
+                value = out(reg) value,
+                options(nostack, preserves_flags)
+            );
+        }
+        value
+    }
+
+    #[inline(always)]
     pub unsafe fn write32(addr: usize, value: u32) {
         let value = value as usize;
         unsafe {

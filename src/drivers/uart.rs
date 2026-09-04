@@ -2,8 +2,15 @@ use crate::drivers::mmio;
 use crate::platform;
 
 pub fn putc(byte: u8) {
+    loop {
+        let lsr = unsafe { mmio::read8(platform::UART0_LSR) };
+        if lsr & platform::UART_LSR_THRE != 0 {
+            break;
+        }
+    }
+
     unsafe {
-        mmio::write32(platform::UART0_BASE, byte as u32);
+        mmio::write32(platform::UART0_BASE, u32::from(byte));
     }
 }
 
