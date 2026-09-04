@@ -5,9 +5,7 @@ mod handoff;
 mod invariants;
 mod reentry;
 mod resume;
-use crate::kernel::task::debug::{
-    debug_current_task_id, debug_kernel_sp_before_task, debug_last_task_sp, debug_task_return_kind,
-};
+use crate::kernel::cpu;
 
 #[cfg(any(
     not(feature = "task_yield_test"),
@@ -18,13 +16,15 @@ use crate::kernel::task::debug::{
         not(feature = "scheduler_fault_lifecycle_test")
     )
 ))]
-use crate::kernel::task::debug::{debug_current_stack_start, debug_current_stack_top};
+use crate::kernel::cpu::{current_stack_start, current_stack_top};
 
 #[cfg(feature = "task_yield_test")]
-use crate::kernel::task::debug::{
-    set_debug_current_stack_bounds, set_debug_current_task_id, set_debug_kernel_return_pc,
-    set_debug_kernel_sp_before_task, set_debug_task_run_stage, task_return_point,
+use crate::kernel::cpu::{
+    set_current, set_current_stack_bounds, set_kernel_return_pc, set_kernel_sp_before_task,
+    set_task_run_stage,
 };
+#[cfg(feature = "task_yield_test")]
+use crate::kernel::task::debug::task_return_point;
 
 use crate::kernel::task::table::{
     TaskReturnContext, TaskReturnKind, create_task, print_task_name_by_id, print_tasks,
@@ -163,8 +163,8 @@ fn print_current_task_stack_check(label: &str) {
     uart::write_line(": running");
 
     let sp = crate::arch::stack_pointer();
-    let stack_start = debug_current_stack_start();
-    let stack_top = debug_current_stack_top();
+    let stack_start = current_stack_start();
+    let stack_top = current_stack_top();
 
     uart::write_str(label);
     uart::write_str(" SP: ");
@@ -178,7 +178,7 @@ fn print_current_task_stack_check(label: &str) {
     uart::write_line("");
 
     uart::write_str("saved kernel SP before task: ");
-    uart::write_hex_u64(debug_kernel_sp_before_task());
+    uart::write_hex_u64(cpu::kernel_sp_before_task());
     uart::write_line("");
 
     uart::write_str("SP check: ");
@@ -240,10 +240,10 @@ pub fn run_task_on_own_stack(task_id: usize) -> ! {
 
     uart::write_line("switching to task stack...");
 
-    set_debug_current_task_id(task_id);
-    set_debug_current_stack_bounds(stack_start, stack_top);
-    set_debug_kernel_sp_before_task(kernel_sp_before_task);
-    set_debug_kernel_return_pc(kernel_return_pc);
+    set_current(task_id);
+    set_current_stack_bounds(stack_start, stack_top);
+    set_kernel_sp_before_task(kernel_sp_before_task);
+    set_kernel_return_pc(kernel_return_pc);
     crate::kernel::task::table::mark_task_started(task_id);
     unsafe {
         crate::arch::start_task_on_stack(entry as usize, stack_top);
@@ -274,7 +274,7 @@ pub fn test_task_yield() {
     uart::write_line("");
     uart::write_line("task yield test:");
 
-    set_debug_task_run_stage(10);
+    set_task_run_stage(10);
 
     #[cfg(feature = "scheduler_fault_lifecycle_test")]
     {
@@ -310,11 +310,14 @@ pub fn test_task_yield() {
 }
 
 pub fn handle_task_return_for_debug_test() {
-    let task_id = debug_current_task_id();
-    let kind = debug_task_return_kind();
-    let task_sp = debug_last_task_sp();
-    let kernel_sp = debug_kernel_sp_before_task();
-    let kernel_return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+    let Some(task_id) = cpu::current() else {
+        uart::write_line("task return with no current task");
+        crate::arch::halt();
+    };
+    let kind = cpu::task_return_kind();
+    let task_sp = cpu::last_task_sp();
+    let kernel_sp = cpu::kernel_sp_before_task();
+    let kernel_return_pc = cpu::kernel_return_pc();
 
     let return_context = TaskReturnContext {
         task_sp,
@@ -325,7 +328,7 @@ pub fn handle_task_return_for_debug_test() {
     let mut cpu_context = crate::arch::capture_task_cpu_context(task_sp, kernel_return_pc);
 
     if matches!(kind, TaskReturnKind::Yield | TaskReturnKind::Sleep) {
-        let debug_resume_pc = crate::kernel::task::debug::debug_task_resume_pc();
+        let debug_resume_pc = cpu::task_resume_pc();
 
         uart::write_str("  debug resume_pc from return boundary: ");
         uart::write_hex_u64(debug_resume_pc);

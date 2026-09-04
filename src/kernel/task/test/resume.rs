@@ -2,7 +2,7 @@
 use super::invariants;
 use crate::drivers::uart;
 #[cfg(feature = "resume_restore_test")]
-use crate::kernel::task::debug::{set_debug_current_stack_bounds, set_debug_current_task_id};
+use crate::kernel::cpu::{set_current, set_current_stack_bounds};
 
 #[cfg(feature = "resume_restore_test")]
 pub fn test_resume_restore() {
@@ -63,12 +63,12 @@ pub fn test_resume_restore() {
     uart::write_line("restore guarded precheck passed");
     uart::write_line("calling arch restore_verified_resume_frame...");
 
-    set_debug_current_task_id(task_id);
+    set_current(task_id);
     match (
         crate::kernel::task::table::get_task_stack_start(task_id),
         crate::kernel::task::table::get_task_stack_top(task_id),
     ) {
-        (Some(start), Some(top)) => set_debug_current_stack_bounds(start, top),
+        (Some(start), Some(top)) => set_current_stack_bounds(start, top),
         _ => {
             uart::write_line("restore aborted: missing task stack bounds");
             crate::arch::halt();

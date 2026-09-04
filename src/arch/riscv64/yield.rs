@@ -103,17 +103,15 @@ pub fn yield_to_kernel_raw(
     kernel_sp: u64,
     kernel_return_pc: u64,
 ) -> ! {
-    crate::kernel::task::debug::set_debug_task_resume_context(task_sp, resume_pc);
+    crate::kernel::cpu::set_task_resume_context(task_sp, resume_pc);
     if matches!(
-        crate::kernel::task::debug::debug_task_return_kind(),
+        crate::kernel::cpu::task_return_kind(),
         crate::kernel::task::TaskReturnKind::None
     ) {
-        crate::kernel::task::debug::set_debug_task_return_kind(
-            crate::kernel::task::TaskReturnKind::Yield,
-        );
+        crate::kernel::cpu::set_task_return_kind(crate::kernel::task::TaskReturnKind::Yield);
     }
 
-    crate::kernel::task::debug::print_debug_task_resume_context();
+    crate::kernel::cpu::print_task_resume_context();
 
     super::return_to_kernel_stack_checked(kernel_sp, kernel_return_pc);
 }

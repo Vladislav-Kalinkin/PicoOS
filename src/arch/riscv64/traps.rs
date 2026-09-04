@@ -9,6 +9,7 @@ const TIMER_HZ: u64 = 1;
 #[unsafe(no_mangle)]
 pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
     arch::disable_irq();
+    crate::kernel::cpu::set_in_trap(true);
 
     let cause = cpu::mcause();
     let is_interrupt = (cause >> 63) != 0;
@@ -16,6 +17,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     if is_interrupt && code == 7 {
         handle_timer_interrupt(frame);
+        crate::kernel::cpu::set_in_trap(false);
         arch::enable_irq();
         return;
     }
@@ -46,7 +48,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     #[cfg(feature = "scheduler_fault_lifecycle_test")]
     {
-        crate::kernel::task::debug::print_trap_execution_context();
+        crate::kernel::cpu::print_trap_execution_context();
         crate::kernel::task::fault::print_current_trap_fault_classification();
 
         match crate::kernel::task::fault::classify_current_trap_fault() {
@@ -94,8 +96,8 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
                 }
 
                 let task_sp = interrupted_sp(frame);
-                let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
-                let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+                let kernel_sp = crate::kernel::cpu::kernel_sp_before_task();
+                let return_pc = crate::kernel::cpu::kernel_return_pc();
 
                 uart::write_str("  task fault return SP: ");
                 uart::write_hex_u64(task_sp);
@@ -200,8 +202,8 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
             crate::kernel::log::fail("timer", "preemption missing task stack top");
             arch::halt();
         };
-        crate::kernel::task::debug::set_debug_current_task_id(next_id);
-        crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
+        crate::kernel::cpu::set_current(next_id);
+        crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
 
         let Some(frame) = crate::kernel::task::get_task_resume_frame(next_id) else {
             crate::kernel::log::fail("timer", "resume frame missing after decision");

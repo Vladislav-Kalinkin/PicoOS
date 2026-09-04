@@ -1,4 +1,5 @@
 pub mod banner;
+pub mod cpu;
 pub mod heap;
 pub mod log;
 pub mod memory;

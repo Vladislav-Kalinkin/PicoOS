@@ -172,7 +172,7 @@ pub fn test_kernel_fault_guard() -> ! {
     crate::drivers::uart::write_line("");
     crate::drivers::uart::write_line("kernel fault guard test:");
     crate::drivers::uart::write_line("triggering real trap from kernel context");
-    crate::kernel::task::debug::clear_debug_current_task_id();
+    crate::kernel::cpu::clear_current();
 
     unsafe {
         core::arch::asm!("ebreak", options(nomem, nostack, preserves_flags));

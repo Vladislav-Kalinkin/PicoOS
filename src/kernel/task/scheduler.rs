@@ -610,8 +610,8 @@ fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
             crate::arch::halt();
         };
 
-        crate::kernel::task::debug::set_debug_current_task_id(task_id);
-        crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
+        crate::kernel::cpu::set_current(task_id);
+        crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
     }
 
     scheduler_log_line("  calling arch restore from scheduler path...");
@@ -953,8 +953,8 @@ fn start_selected_task_checked(task_id: usize) -> ! {
         feature = "scheduler_fault_lifecycle_test"
     ))]
     {
-        crate::kernel::task::debug::set_debug_current_task_id(task_id);
-        crate::kernel::task::debug::set_debug_current_stack_bounds(stack_start, stack_top);
+        crate::kernel::cpu::set_current(task_id);
+        crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
     }
 
     crate::kernel::task::run_task_on_own_stack(task_id);

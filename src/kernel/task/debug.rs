@@ -1,143 +1,5 @@
 use crate::drivers::uart;
-
-static mut DEBUG_KERNEL_RETURN_PC: u64 = 0;
-static mut DEBUG_KERNEL_SP_BEFORE_TASK: u64 = 0;
-static mut DEBUG_CURRENT_STACK_START: u64 = 0;
-static mut DEBUG_CURRENT_STACK_TOP: u64 = 0;
-static mut DEBUG_TASK_RUN_STAGE: u64 = 0;
-static mut DEBUG_TASK_RETURN_KIND: crate::kernel::task::table::TaskReturnKind =
-    crate::kernel::task::table::TaskReturnKind::None;
-static mut DEBUG_CURRENT_TASK: Option<usize> = None;
-static mut DEBUG_LAST_TASK_SP: u64 = 0;
-static mut DEBUG_TASK_RESUME_PC: u64 = 0;
-
-#[allow(dead_code)]
-pub fn set_debug_kernel_return_pc(pc: u64) {
-    unsafe {
-        DEBUG_KERNEL_RETURN_PC = pc;
-    }
-}
-
-pub fn debug_kernel_return_pc() -> u64 {
-    unsafe { DEBUG_KERNEL_RETURN_PC }
-}
-
-#[allow(dead_code)]
-pub fn set_debug_kernel_sp_before_task(sp: u64) {
-    unsafe {
-        DEBUG_KERNEL_SP_BEFORE_TASK = sp;
-    }
-}
-
-pub fn debug_kernel_sp_before_task() -> u64 {
-    unsafe { DEBUG_KERNEL_SP_BEFORE_TASK }
-}
-
-#[allow(dead_code)]
-pub fn set_debug_current_stack_bounds(start: u64, top: u64) {
-    unsafe {
-        DEBUG_CURRENT_STACK_START = start;
-        DEBUG_CURRENT_STACK_TOP = top;
-    }
-}
-
-pub fn debug_current_stack_start() -> u64 {
-    unsafe { DEBUG_CURRENT_STACK_START }
-}
-
-pub fn debug_current_stack_top() -> u64 {
-    unsafe { DEBUG_CURRENT_STACK_TOP }
-}
-
-pub fn set_debug_last_task_sp(sp: u64) {
-    unsafe {
-        DEBUG_LAST_TASK_SP = sp;
-    }
-}
-
-pub fn debug_last_task_sp() -> u64 {
-    unsafe { DEBUG_LAST_TASK_SP }
-}
-
-#[allow(dead_code)]
-pub fn set_debug_task_run_stage(stage: u64) {
-    unsafe {
-        DEBUG_TASK_RUN_STAGE = stage;
-    }
-}
-
-pub fn debug_task_run_stage() -> u64 {
-    unsafe { DEBUG_TASK_RUN_STAGE }
-}
-
-pub fn set_debug_task_return_kind(kind: crate::kernel::task::table::TaskReturnKind) {
-    unsafe {
-        DEBUG_TASK_RETURN_KIND = kind;
-    }
-}
-
-pub fn debug_task_return_kind() -> crate::kernel::task::table::TaskReturnKind {
-    unsafe { DEBUG_TASK_RETURN_KIND }
-}
-
-pub fn set_debug_current_task_id(id: usize) {
-    unsafe {
-        DEBUG_CURRENT_TASK = Some(id);
-    }
-}
-
-pub fn clear_debug_current_task_id() {
-    unsafe {
-        DEBUG_CURRENT_TASK = None;
-    }
-}
-
-pub fn debug_current_task_id() -> usize {
-    let task = unsafe { DEBUG_CURRENT_TASK };
-    task.unwrap_or(0)
-}
-
-pub fn set_debug_task_resume_pc(pc: u64) {
-    unsafe {
-        DEBUG_TASK_RESUME_PC = pc;
-    }
-}
-
-pub fn debug_task_resume_pc() -> u64 {
-    unsafe { DEBUG_TASK_RESUME_PC }
-}
-
-pub fn set_debug_task_resume_context(task_sp: u64, resume_pc: u64) {
-    set_debug_last_task_sp(task_sp);
-    set_debug_task_resume_pc(resume_pc);
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum TrapExecutionContext {
-    Kernel,
-    Task,
-}
-
-pub fn current_trap_execution_context() -> TrapExecutionContext {
-    let task = unsafe { DEBUG_CURRENT_TASK };
-    if task.is_some() {
-        TrapExecutionContext::Task
-    } else {
-        TrapExecutionContext::Kernel
-    }
-}
-
-#[allow(dead_code)]
-pub fn print_trap_execution_context() {
-    match current_trap_execution_context() {
-        TrapExecutionContext::Kernel => {
-            crate::drivers::uart::write_line("trap execution context: kernel");
-        }
-        TrapExecutionContext::Task => {
-            crate::drivers::uart::write_line("trap execution context: task");
-        }
-    }
-}
+use crate::kernel::cpu;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn task_return_point() -> ! {
@@ -145,15 +7,15 @@ pub extern "C" fn task_return_point() -> ! {
     uart::write_line("task return:");
 
     uart::write_str("  reason: ");
-    crate::kernel::task::table::print_task_return_kind(debug_task_return_kind());
+    crate::kernel::task::table::print_task_return_kind(cpu::task_return_kind());
     uart::write_line("");
 
     crate::kernel::task::test::handle_task_return_for_debug_test();
-    clear_debug_current_task_id();
+    cpu::clear_current();
     #[cfg(feature = "task_sleep_runtime_e2e_test")]
-    let return_kind = debug_task_return_kind();
+    let return_kind = cpu::task_return_kind();
 
-    match debug_task_run_stage() {
+    match cpu::task_run_stage() {
         #[cfg(feature = "task_yield_test")]
         10 => {
             #[cfg(feature = "task_sleep_runtime_e2e_test")]
@@ -161,14 +23,14 @@ pub extern "C" fn task_return_point() -> ! {
                 return_kind,
                 crate::kernel::task::table::TaskReturnKind::Sleep
             ) {
-                use crate::arch::riscv64::{cpu, timer};
+                use crate::arch::riscv64::{cpu as hart, timer};
 
                 const SLEEP_TEST_TIMER_HZ: u64 = 1;
 
                 uart::write_line("sleep runtime e2e: task blocked, waiting for timer wake");
                 crate::kernel::ticks::reset();
                 timer::arm_timer_hz(SLEEP_TEST_TIMER_HZ);
-                cpu::enable_machine_timer_interrupt();
+                hart::enable_machine_timer_interrupt();
                 crate::arch::enable_irq();
 
                 loop {
@@ -234,17 +96,4 @@ pub extern "C" fn task_return_point() -> ! {
             crate::arch::halt();
         }
     }
-}
-
-pub fn print_debug_task_resume_context() {
-    let task_sp = debug_last_task_sp();
-    let resume_pc = debug_task_resume_pc();
-
-    crate::drivers::uart::write_str("yield resume PC: ");
-    crate::drivers::uart::write_hex_u64(resume_pc);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("yield current SP: ");
-    crate::drivers::uart::write_hex_u64(task_sp);
-    crate::drivers::uart::write_line("");
 }

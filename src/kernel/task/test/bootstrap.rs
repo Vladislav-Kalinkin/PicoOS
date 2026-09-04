@@ -7,16 +7,16 @@
 use crate::drivers::uart;
 
 pub fn print_task_zero_context_guard() {
-    use crate::kernel::task::debug::TrapExecutionContext;
+    use crate::kernel::cpu::TrapExecutionContext;
 
-    crate::kernel::task::debug::set_debug_current_task_id(0);
+    crate::kernel::cpu::set_current(0);
 
     let ok = matches!(
-        crate::kernel::task::debug::current_trap_execution_context(),
+        crate::kernel::cpu::trap_execution_context(),
         TrapExecutionContext::Task
     );
 
-    crate::kernel::task::debug::clear_debug_current_task_id();
+    crate::kernel::cpu::clear_current();
 
     crate::drivers::uart::write_str("task id 0 context guard: ");
     crate::kernel::task::table::print_yes_no(ok);

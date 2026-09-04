@@ -1,8 +1,5 @@
 use crate::drivers::uart;
-use crate::kernel::task::debug::{
-    debug_kernel_return_pc, debug_kernel_sp_before_task, set_debug_last_task_sp,
-    set_debug_task_return_kind,
-};
+use crate::kernel::cpu;
 use crate::kernel::task::table::TaskEntry;
 use crate::kernel::task::table::TaskReturnKind;
 
@@ -30,10 +27,10 @@ pub fn task_exit() -> ! {
     uart::write_line("task returned; task_exit called");
 
     let current_sp = crate::arch::stack_pointer();
-    let kernel_sp = debug_kernel_sp_before_task();
-    let return_pc = debug_kernel_return_pc();
+    let kernel_sp = cpu::kernel_sp_before_task();
+    let return_pc = cpu::kernel_return_pc();
 
-    set_debug_last_task_sp(current_sp);
+    cpu::set_last_task_sp(current_sp);
 
     uart::write_str("task_exit current SP: ");
     uart::write_hex_u64(current_sp);
@@ -49,7 +46,7 @@ pub fn task_exit() -> ! {
 
     uart::write_line("returning to kernel stack...");
 
-    set_debug_task_return_kind(TaskReturnKind::Exit);
+    cpu::set_task_return_kind(TaskReturnKind::Exit);
 
     crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
 }
@@ -62,8 +59,8 @@ pub fn task_fault() -> ! {
     uart::write_line("task fault requested");
 
     let current_sp = crate::arch::stack_pointer();
-    let kernel_sp = debug_kernel_sp_before_task();
-    let return_pc = debug_kernel_return_pc();
+    let kernel_sp = cpu::kernel_sp_before_task();
+    let return_pc = cpu::kernel_return_pc();
 
     uart::write_str("task_fault current SP: ");
     uart::write_hex_u64(current_sp);
@@ -91,8 +88,8 @@ pub fn task_fault() -> ! {
 pub fn yield_now() {
     crate::drivers::uart::write_line("task yield requested");
 
-    let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
-    let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+    let kernel_sp = crate::kernel::cpu::kernel_sp_before_task();
+    let return_pc = crate::kernel::cpu::kernel_return_pc();
 
     crate::drivers::uart::write_str("yield saved kernel SP: ");
     crate::drivers::uart::write_hex_u64(kernel_sp);
@@ -111,7 +108,10 @@ pub fn yield_now() {
 
 #[cfg(feature = "task_sleep_runtime_e2e_test")]
 pub fn task_sleep_ticks(ticks: u64) {
-    let task_id = crate::kernel::task::debug::debug_current_task_id();
+    let Some(task_id) = crate::kernel::cpu::current() else {
+        crate::kernel::log::fail("sleep", "sleep requested with no current task");
+        crate::arch::halt();
+    };
     let wake_tick = crate::kernel::ticks::get().saturating_add(ticks.max(1));
 
     crate::kernel::log::info("sleep", "task requested timed sleep");
@@ -121,10 +121,10 @@ pub fn task_sleep_ticks(ticks: u64) {
         crate::arch::halt();
     }
 
-    set_debug_task_return_kind(TaskReturnKind::Sleep);
+    cpu::set_task_return_kind(TaskReturnKind::Sleep);
 
-    let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
-    let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
+    let kernel_sp = crate::kernel::cpu::kernel_sp_before_task();
+    let return_pc = crate::kernel::cpu::kernel_return_pc();
 
     unsafe {
         crate::arch::task_yield_boundary(kernel_sp, return_pc);

@@ -1,5 +1,5 @@
 #[cfg(feature = "two_task_resume_handoff_test")]
-use crate::kernel::task::debug::{set_debug_current_stack_bounds, set_debug_current_task_id};
+use crate::kernel::cpu::{set_current, set_current_stack_bounds};
 
 #[cfg(feature = "two_task_resume_handoff_test")]
 pub fn handoff_worker_a() {
@@ -52,6 +52,6 @@ pub fn prepare_debug_context_for_task(task_id: usize) {
         crate::arch::halt();
     };
 
-    set_debug_current_task_id(task_id);
-    set_debug_current_stack_bounds(stack_start, stack_top);
+    set_current(task_id);
+    set_current_stack_bounds(stack_start, stack_top);
 }

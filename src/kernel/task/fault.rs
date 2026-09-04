@@ -8,14 +8,12 @@ pub enum TrapFaultClassification {
 }
 
 pub fn classify_current_trap_fault() -> TrapFaultClassification {
-    match crate::kernel::task::debug::current_trap_execution_context() {
-        crate::kernel::task::debug::TrapExecutionContext::Kernel => {
+    match crate::kernel::cpu::trap_execution_context() {
+        crate::kernel::cpu::TrapExecutionContext::Kernel => {
             TrapFaultClassification::KernelFault
         }
 
-        crate::kernel::task::debug::TrapExecutionContext::Task => {
-            TrapFaultClassification::TaskFault
-        }
+        crate::kernel::cpu::TrapExecutionContext::Task => TrapFaultClassification::TaskFault,
     }
 }
 
@@ -40,7 +38,10 @@ pub fn print_current_trap_fault_classification() {
 
 #[allow(dead_code)]
 pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<usize> {
-    let task_id = crate::kernel::task::debug::debug_current_task_id();
+    let Some(task_id) = crate::kernel::cpu::current() else {
+        crate::kernel::log::fail("fault", "record task fault with no current task");
+        return None;
+    };
 
     if matches!(
         crate::kernel::task::table::get_task_state(task_id),
@@ -84,10 +85,8 @@ pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<u
 
 #[allow(dead_code)]
 pub fn return_current_task_fault(task_sp: u64, kernel_sp: u64, return_pc: u64) -> ! {
-    crate::kernel::task::debug::set_debug_last_task_sp(task_sp);
-    crate::kernel::task::debug::set_debug_task_return_kind(
-        crate::kernel::task::table::TaskReturnKind::Fault,
-    );
+    crate::kernel::cpu::set_last_task_sp(task_sp);
+    crate::kernel::cpu::set_task_return_kind(crate::kernel::task::table::TaskReturnKind::Fault);
 
     crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
 }
