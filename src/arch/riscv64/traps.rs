@@ -6,7 +6,7 @@ use crate::kernel::trap_frame::Riscv64TrapFrame;
 
 const TIMER_HZ: u64 = 1;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
     arch::disable_irq();
 
@@ -224,7 +224,7 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) {
     timer::arm_timer_hz(TIMER_HZ);
 }
 
-fn interrupted_sp(frame: *const Riscv64TrapFrame) -> u64 {
+const fn interrupted_sp(frame: *const Riscv64TrapFrame) -> u64 {
     unsafe { (*frame).sp }
 }
 

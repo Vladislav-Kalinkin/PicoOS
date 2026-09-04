@@ -7,11 +7,6 @@ pub fn putc(byte: u8) {
     }
 }
 
-#[allow(dead_code)]
-pub fn write_byte(byte: u8) {
-    putc(byte);
-}
-
 pub fn write_str(s: &str) {
     for byte in s.bytes() {
         if byte == b'\n' {

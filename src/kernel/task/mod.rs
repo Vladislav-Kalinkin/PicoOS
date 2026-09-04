@@ -5,31 +5,22 @@ pub mod entry;
 pub mod fault;
 pub mod scheduler;
 pub mod table;
-#[allow(dead_code)]
 pub mod test;
 
+#[cfg(any(
+    feature = "task_yield_test",
+    feature = "task_sleep_runtime_e2e_test",
+    feature = "two_yield_task_test",
+    feature = "two_task_resume_handoff_test",
+    feature = "scheduler_fault_lifecycle_test",
+    feature = "task_fault_test"
+))]
 pub use entry::*;
-#[allow(unused_imports)]
+#[cfg(any(
+    feature = "task_fault_test",
+    feature = "scheduler_fault_lifecycle_test",
+    feature = "kernel_fault_guard_test"
+))]
 pub use fault::*;
 pub use table::*;
-#[allow(unused_imports)]
 pub use test::*;
-
-#[cfg(feature = "resume_candidate_test")]
-#[allow(unused_imports)]
-pub use test::test_resume_candidate_selection;
-
-#[cfg(feature = "resume_preflight_test")]
-#[allow(unused_imports)]
-pub use test::test_resume_preflight_check;
-
-#[cfg(feature = "resume_dry_run_test")]
-#[allow(unused_imports)]
-pub use test::test_resume_dry_run;
-
-#[cfg(feature = "resume_restore_test")]
-#[allow(unused_imports)]
-pub use test::test_resume_restore;
-
-#[cfg(feature = "kernel_fault_guard_test")]
-pub use test::test_kernel_fault_guard;

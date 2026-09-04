@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+#[cfg(feature = "two_task_resume_handoff_test")]
 use crate::kernel::task::debug::{set_debug_current_stack_bounds, set_debug_current_task_id};
 
 #[cfg(feature = "two_task_resume_handoff_test")]

@@ -1,8 +1,7 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use super::invariants;
-#[allow(unused_imports)]
 use crate::drivers::uart;
-#[allow(unused_imports)]
+#[cfg(feature = "resume_restore_test")]
 use crate::kernel::task::debug::{set_debug_current_stack_bounds, set_debug_current_task_id};
 
 #[cfg(feature = "resume_restore_test")]

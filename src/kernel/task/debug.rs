@@ -41,12 +41,10 @@ pub fn set_debug_current_stack_bounds(start: u64, top: u64) {
     }
 }
 
-#[allow(dead_code)]
 pub fn debug_current_stack_start() -> u64 {
     unsafe { DEBUG_CURRENT_STACK_START }
 }
 
-#[allow(dead_code)]
 pub fn debug_current_stack_top() -> u64 {
     unsafe { DEBUG_CURRENT_STACK_TOP }
 }
@@ -82,14 +80,12 @@ pub fn debug_task_return_kind() -> crate::kernel::task::table::TaskReturnKind {
     unsafe { DEBUG_TASK_RETURN_KIND }
 }
 
-#[allow(dead_code)]
 pub fn set_debug_current_task_id(id: usize) {
     unsafe {
         DEBUG_CURRENT_TASK = Some(id);
     }
 }
 
-#[allow(dead_code)]
 pub fn clear_debug_current_task_id() {
     unsafe {
         DEBUG_CURRENT_TASK = None;
@@ -101,7 +97,6 @@ pub fn debug_current_task_id() -> usize {
     task.unwrap_or(0)
 }
 
-#[allow(dead_code)]
 pub fn set_debug_task_resume_pc(pc: u64) {
     unsafe {
         DEBUG_TASK_RESUME_PC = pc;
@@ -112,7 +107,6 @@ pub fn debug_task_resume_pc() -> u64 {
     unsafe { DEBUG_TASK_RESUME_PC }
 }
 
-#[allow(dead_code)]
 pub fn set_debug_task_resume_context(task_sp: u64, resume_pc: u64) {
     set_debug_last_task_sp(task_sp);
     set_debug_task_resume_pc(resume_pc);
@@ -133,6 +127,7 @@ pub fn current_trap_execution_context() -> TrapExecutionContext {
     }
 }
 
+#[allow(dead_code)]
 pub fn print_trap_execution_context() {
     match current_trap_execution_context() {
         TrapExecutionContext::Kernel => {
@@ -144,7 +139,7 @@ pub fn print_trap_execution_context() {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn task_return_point() -> ! {
     uart::write_line("");
     uart::write_line("task return:");
@@ -162,7 +157,10 @@ pub extern "C" fn task_return_point() -> ! {
         #[cfg(feature = "task_yield_test")]
         10 => {
             #[cfg(feature = "task_sleep_runtime_e2e_test")]
-            if matches!(return_kind, crate::kernel::task::table::TaskReturnKind::Sleep) {
+            if matches!(
+                return_kind,
+                crate::kernel::task::table::TaskReturnKind::Sleep
+            ) {
                 use crate::arch::riscv64::{cpu, timer};
 
                 const SLEEP_TEST_TIMER_HZ: u64 = 1;
@@ -210,7 +208,10 @@ pub extern "C" fn task_return_point() -> ! {
             }
 
             #[cfg(feature = "task_sleep_runtime_e2e_test")]
-            if matches!(return_kind, crate::kernel::task::table::TaskReturnKind::Exit) {
+            if matches!(
+                return_kind,
+                crate::kernel::task::table::TaskReturnKind::Exit
+            ) {
                 let worker_finished = matches!(
                     crate::kernel::task::table::get_task_state(1),
                     Some(crate::kernel::task::table::TaskState::Finished)
@@ -235,7 +236,6 @@ pub extern "C" fn task_return_point() -> ! {
     }
 }
 
-#[allow(dead_code)]
 pub fn print_debug_task_resume_context() {
     let task_sp = debug_last_task_sp();
     let resume_pc = debug_task_resume_pc();

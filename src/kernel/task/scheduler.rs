@@ -78,29 +78,6 @@ pub fn print_current_task_entry() {
     }
 }
 
-#[allow(dead_code)]
-pub fn on_timer_tick(tick: u64) {
-    let next = schedule_next();
-
-    uart::write_str("tick: ");
-    uart::write_dec_u64(tick);
-
-    uart::write_str(" task: ");
-
-    match next {
-        Some(id) => {
-            task::print_task_name_by_id(id);
-
-            uart::write_str(" entry: ");
-            task::print_task_entry_by_id(id);
-
-            uart::write_str(" context:");
-            task::print_task_full_context_by_id(id);
-        }
-        None => uart::write_str("none"),
-    }
-}
-
 pub fn save_current_context(saved_sp: u64, saved_pc: u64) -> Option<usize> {
     let current = current_task_id()?;
 
@@ -111,11 +88,6 @@ pub fn save_current_context(saved_sp: u64, saved_pc: u64) -> Option<usize> {
 
 pub fn print_task_name(id: usize) {
     task::print_task_name_by_id(id);
-}
-
-#[allow(dead_code)]
-pub fn print_task_context(id: usize) {
-    task::print_task_context_by_id(id);
 }
 
 pub fn force_current_task(id: usize) {

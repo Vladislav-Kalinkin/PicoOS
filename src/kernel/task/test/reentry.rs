@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use crate::drivers::uart;
-
 #[cfg(feature = "scheduler_fault_lifecycle_test")]
 pub(crate) fn check_finished_task_dispatch_guard(id: usize) -> bool {
     print_terminal_task_dispatch_guard("finished", id)

@@ -47,6 +47,13 @@ task_yield_boundary:
 "#
 );
 
+#[cfg(any(
+    feature = "task_yield_test",
+    feature = "task_sleep_runtime_e2e_test",
+    feature = "two_yield_task_test",
+    feature = "two_task_resume_handoff_test",
+    feature = "scheduler_fault_lifecycle_test"
+))]
 unsafe extern "C" {
     pub fn task_yield_boundary(kernel_sp: u64, return_pc: u64);
 }
@@ -68,45 +75,6 @@ pub fn halt() -> ! {
             asm!("wfi", options(nomem, nostack, preserves_flags));
         }
     }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct RiscvYieldContext {
-    pub ra: u64,
-    pub s0: u64,
-    pub s1: u64,
-    pub s2: u64,
-    pub s3: u64,
-    pub s4: u64,
-    pub s5: u64,
-    pub s6: u64,
-    pub s7: u64,
-    pub s8: u64,
-    pub s9: u64,
-    pub s10: u64,
-    pub s11: u64,
-}
-
-static mut LAST_RISCV_YIELD_CONTEXT: RiscvYieldContext = RiscvYieldContext {
-    ra: 0,
-    s0: 0,
-    s1: 0,
-    s2: 0,
-    s3: 0,
-    s4: 0,
-    s5: 0,
-    s6: 0,
-    s7: 0,
-    s8: 0,
-    s9: 0,
-    s10: 0,
-    s11: 0,
-};
-
-#[allow(dead_code)]
-pub fn last_riscv_yield_context() -> RiscvYieldContext {
-    unsafe { LAST_RISCV_YIELD_CONTEXT }
 }
 
 pub fn init_exceptions() {
@@ -155,11 +123,6 @@ pub fn wait_for_interrupt() {
     }
 }
 
-#[allow(dead_code)]
-pub fn return_from_interrupt() -> ! {
-    halt();
-}
-
 pub fn print_cpu_info() {
     crate::drivers::uart::write_line("riscv64 CPU info:");
 
@@ -197,6 +160,7 @@ pub fn print_cpu_info() {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "task_yield_test")]
 #[inline(never)]
 pub unsafe fn start_task_on_stack(entry: usize, stack_top: u64) -> ! {
     unsafe {
@@ -243,7 +207,6 @@ pub fn return_to_kernel_stack_checked(kernel_sp: u64, return_pc: u64) -> ! {
     }
 }
 
-#[allow(dead_code)]
 pub fn capture_task_cpu_context(
     sp: u64,
     return_pc: u64,
@@ -292,92 +255,6 @@ pub fn capture_task_cpu_context(
     }
 }
 
-#[allow(dead_code)]
-pub unsafe fn restore_task_cpu_context(
-    context: crate::kernel::task::cpu_context::TaskCpuContext,
-) -> ! {
-    core::arch::asm!(
-    "mv sp, {sp_in}",
-
-    "mv ra, {resume_pc_in}",
-
-    "mv s0, {s0_in}",
-    "mv s1, {s1_in}",
-    "mv s2, {s2_in}",
-    "mv s3, {s3_in}",
-    "mv s4, {s4_in}",
-    "mv s5, {s5_in}",
-    "mv s6, {s6_in}",
-    "mv s7, {s7_in}",
-    "mv s8, {s8_in}",
-    "mv s9, {s9_in}",
-    "mv s10, {s10_in}",
-    "mv s11, {s11_in}",
-
-    "ret",
-
-    sp_in = in(reg) context.sp,
-    resume_pc_in = in(reg) context.resume_pc,
-
-    s0_in = in(reg) context.s[0],
-    s1_in = in(reg) context.s[1],
-    s2_in = in(reg) context.s[2],
-    s3_in = in(reg) context.s[3],
-    s4_in = in(reg) context.s[4],
-    s5_in = in(reg) context.s[5],
-    s6_in = in(reg) context.s[6],
-    s7_in = in(reg) context.s[7],
-    s8_in = in(reg) context.s[8],
-    s9_in = in(reg) context.s[9],
-    s10_in = in(reg) context.s[10],
-    s11_in = in(reg) context.s[11],
-
-    options(noreturn)
-    );
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-pub fn return_address() -> u64 {
-    let ra: u64;
-
-    unsafe {
-        core::arch::asm!(
-        "mv {ra_out}, ra",
-        ra_out = out(reg) ra,
-        options(nomem, nostack, preserves_flags),
-        );
-    }
-
-    ra
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-pub fn resume_stack_pointer() -> u64 {
-    stack_pointer()
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-pub fn capture_yield_context() -> (u64, u64) {
-    let sp: u64;
-    let ra: u64;
-
-    unsafe {
-        core::arch::asm!(
-        "mv {sp_out}, sp",
-        "mv {ra_out}, ra",
-        sp_out = out(reg) sp,
-        ra_out = out(reg) ra,
-        options(nomem, nostack, preserves_flags),
-        );
-    }
-
-    (sp, ra)
-}
-
-#[allow(dead_code)]
 pub fn yield_to_kernel_raw(
     task_sp: u64,
     resume_pc: u64,
@@ -399,6 +276,12 @@ pub fn yield_to_kernel_raw(
     return_to_kernel_stack_checked(kernel_sp, kernel_return_pc);
 }
 
+#[cfg(any(
+    feature = "resume_restore_test",
+    feature = "scheduler_dispatch_test",
+    feature = "timer_preemption_prototype",
+    feature = "two_task_resume_handoff_test",
+))]
 #[allow(dead_code)]
 pub fn restore_verified_resume_frame(frame: crate::kernel::task::cpu_context::TaskCpuContext) -> ! {
     crate::drivers::uart::write_line("arch restore verified resume frame:");
@@ -452,6 +335,12 @@ pub fn restore_verified_resume_frame(frame: crate::kernel::task::cpu_context::Ta
     }
 }
 
+#[cfg(any(
+    feature = "resume_restore_test",
+    feature = "scheduler_dispatch_test",
+    feature = "timer_preemption_prototype",
+    feature = "two_task_resume_handoff_test",
+))]
 fn print_restore_plan(frame: crate::kernel::task::cpu_context::TaskCpuContext) {
     crate::drivers::uart::write_line(" restore plan:");
 
@@ -472,6 +361,12 @@ fn print_restore_plan(frame: crate::kernel::task::cpu_context::TaskCpuContext) {
     crate::drivers::uart::write_line("");
 }
 
+#[cfg(any(
+    feature = "resume_restore_test",
+    feature = "scheduler_dispatch_test",
+    feature = "timer_preemption_prototype",
+    feature = "two_task_resume_handoff_test",
+))]
 fn print_restore_contract() {
     crate::drivers::uart::write_line(" assembly restore contract:");
     crate::drivers::uart::write_line(" set sp to verified frame.sp");
@@ -481,6 +376,12 @@ fn print_restore_contract() {
     crate::drivers::uart::write_line(" do not touch kernel stack after switching sp");
 }
 
+#[cfg(any(
+    feature = "resume_restore_test",
+    feature = "scheduler_dispatch_test",
+    feature = "timer_preemption_prototype",
+    feature = "two_task_resume_handoff_test",
+))]
 #[inline(never)]
 unsafe fn restore_resume_frame_asm_stub(
     frame: crate::kernel::task::cpu_context::TaskCpuContext,
@@ -561,48 +462,6 @@ fn print_returning_yield_contract() {
         " after future restore, yield_to_kernel_and_return must return normally",
     );
     crate::drivers::uart::write_line(" Rust code after yield_now must be reachable");
-}
-
-#[allow(dead_code)]
-fn validate_returning_yield_abi_inputs(
-    task_sp: u64,
-    resume_pc: u64,
-    kernel_sp: u64,
-    return_pc: u64,
-) -> bool {
-    crate::drivers::uart::write_line(" RISC-V returning yield ABI validation:");
-
-    let task_sp_nonzero = task_sp != 0;
-    let kernel_sp_nonzero = kernel_sp != 0;
-    let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(resume_pc);
-    let return_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(return_pc);
-
-    crate::drivers::uart::write_str(" task_sp non-zero: ");
-    crate::kernel::task::table::print_yes_no(task_sp_nonzero);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str(" kernel_sp non-zero: ");
-    crate::kernel::task::table::print_yes_no(kernel_sp_nonzero);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str(" resume_pc inside kernel text: ");
-    crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str(" return_pc inside kernel text: ");
-    crate::kernel::task::table::print_yes_no(return_pc_inside_text);
-    crate::drivers::uart::write_line("");
-
-    let ok = task_sp_nonzero && kernel_sp_nonzero && resume_pc_inside_text && return_pc_inside_text;
-
-    crate::drivers::uart::write_str(" result: ");
-    if ok {
-        crate::drivers::uart::write_line("OK");
-    } else {
-        crate::drivers::uart::write_line("FAILED");
-    }
-
-    ok
 }
 
 #[cfg(feature = "real_resume_restore_test")]
@@ -746,37 +605,15 @@ unsafe fn restore_resume_frame_real_jump(
         crate::drivers::uart::write_line(" task exit requested");
     }
 
-    core::arch::asm!(
-        "mv sp, {new_sp}",
-        "mv ra, {new_ra}",
-        "jr {resume_pc}",
-        new_sp = in(reg) frame.sp,
-        new_ra = in(reg) frame.ra,
-        resume_pc = in(reg) frame.resume_pc,
-        options(noreturn)
-    );
-}
-
-#[cfg(target_arch = "riscv64")]
-#[allow(dead_code)]
-pub fn capture_riscv_yield_context() {
     unsafe {
         core::arch::asm!(
-            "sd ra, 0({ctx})",
-            "sd s0, 8({ctx})",
-            "sd s1, 16({ctx})",
-            "sd s2, 24({ctx})",
-            "sd s3, 32({ctx})",
-            "sd s4, 40({ctx})",
-            "sd s5, 48({ctx})",
-            "sd s6, 56({ctx})",
-            "sd s7, 64({ctx})",
-            "sd s8, 72({ctx})",
-            "sd s9, 80({ctx})",
-            "sd s10, 88({ctx})",
-            "sd s11, 96({ctx})",
-            ctx = in(reg) core::ptr::addr_of_mut!(LAST_RISCV_YIELD_CONTEXT),
-            options(nostack, preserves_flags),
+            "mv sp, {new_sp}",
+            "mv ra, {new_ra}",
+            "jr {resume_pc}",
+            new_sp = in(reg) frame.sp,
+            new_ra = in(reg) frame.ra,
+            resume_pc = in(reg) frame.resume_pc,
+            options(noreturn)
         );
     }
 }

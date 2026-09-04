@@ -124,17 +124,14 @@ pub fn free_memory_start() -> u64 {
     symbol_addr(core::ptr::addr_of!(__free_memory_start))
 }
 
-#[allow(dead_code)]
 pub fn kernel_text_start() -> u64 {
     text_start()
 }
 
-#[allow(dead_code)]
 pub fn kernel_text_end() -> u64 {
     text_end()
 }
 
-#[allow(dead_code)]
 pub fn is_inside_kernel_text(addr: u64) -> bool {
     addr >= kernel_text_start() && addr < kernel_text_end()
 }

@@ -37,6 +37,6 @@ pub fn print_initial_context(sp: u64) {
     }
 }
 
-fn align_down(value: u64, align: u64) -> u64 {
+const fn align_down(value: u64, align: u64) -> u64 {
     value & !(align - 1)
 }

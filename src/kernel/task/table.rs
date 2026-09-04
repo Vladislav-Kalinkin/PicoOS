@@ -6,7 +6,7 @@ use crate::kernel::task::cpu_context::{self, TaskCpuContext};
 pub const MAX_TASKS: usize = 4;
 
 #[allow(dead_code)]
-pub fn max_tasks() -> usize {
+pub const fn max_tasks() -> usize {
     MAX_TASKS
 }
 
@@ -15,8 +15,8 @@ static mut LAST_RETURNED_TASK_ID: Option<usize> = None;
 
 pub type TaskEntry = fn();
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
 pub enum TaskState {
     Empty,
     Ready,
@@ -26,8 +26,8 @@ pub enum TaskState {
     Faulted,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
 pub enum TaskReturnKind {
     None,
     Exit,
@@ -36,7 +36,8 @@ pub enum TaskReturnKind {
     Fault,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum TaskLifecycleTransition {
     Start,
     Yield,
@@ -52,7 +53,6 @@ pub struct TaskReturnContext {
     pub kernel_return_pc: u64,
 }
 
-#[allow(dead_code)]
 #[cfg(any(
     feature = "scheduler_reentry_test",
     feature = "scheduler_dispatch_test"
@@ -65,8 +65,8 @@ pub struct TaskReturnSnapshot {
     pub can_resume: bool,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum TaskFaultReason {
     Breakpoint,
     InstructionAccessFault,
@@ -76,18 +76,18 @@ pub enum TaskFaultReason {
     Unknown(u64),
 }
 
-#[allow(dead_code)]
 impl TaskFaultReason {
-    /// Конвертирует значение mcause в конкретную причину fault.
-    /// Согласно RISC-V Privileged Spec, Table 16 (synchronous exceptions).
-    pub fn from_mcause(cause: u64) -> Self {
+    #[allow(dead_code)]
+    /// Map `mcause` to a concrete fault reason.
+    /// RISC-V Privileged Spec, Table 16 (synchronous exceptions).
+    pub const fn from_mcause(cause: u64) -> Self {
         match cause {
-            1 => TaskFaultReason::InstructionAccessFault,
-            2 => TaskFaultReason::IllegalInstruction,
-            3 => TaskFaultReason::Breakpoint,
-            5 => TaskFaultReason::LoadAccessFault,
-            7 => TaskFaultReason::StoreAccessFault,
-            other => TaskFaultReason::Unknown(other),
+            1 => Self::InstructionAccessFault,
+            2 => Self::IllegalInstruction,
+            3 => Self::Breakpoint,
+            5 => Self::LoadAccessFault,
+            7 => Self::StoreAccessFault,
+            other => Self::Unknown(other),
         }
     }
 }
@@ -111,9 +111,13 @@ pub struct Task {
     pub has_started: bool,
     pub can_resume: bool,
     pub last_return_kind: TaskReturnKind,
+    #[allow(dead_code)]
     pub last_fault_reason: Option<TaskFaultReason>,
+    #[allow(dead_code)]
     pub last_fault_mcause: Option<u64>,
+    #[allow(dead_code)]
     pub last_fault_mepc: Option<u64>,
+    #[allow(dead_code)]
     pub last_fault_mtval: Option<u64>,
     pub sleep_until_tick: Option<u64>,
 }
@@ -150,7 +154,6 @@ impl Task {
 static mut TASKS: [Task; MAX_TASKS] = [Task::empty(); MAX_TASKS];
 static mut NEXT_TASK_ID: usize = 0;
 
-#[allow(dead_code)]
 pub fn init() {
     unsafe {
         TASKS = [Task::empty(); MAX_TASKS];
@@ -332,22 +335,6 @@ pub fn print_tasks() {
     }
 }
 
-#[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
-pub fn task_count() -> usize {
-    let mut count = 0;
-
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) {
-                count += 1;
-            }
-        }
-    }
-
-    count
-}
-
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_name(id: usize) -> Option<[u8; TASK_NAME_LEN]> {
     unsafe {
@@ -451,14 +438,12 @@ pub fn find_next_dispatchable_after(current_id: Option<usize>) -> Option<usize> 
     find_next_task_after(current_id, |task| is_dispatchable_task(task.id))
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_reentry_test")]
 #[allow(clippy::needless_range_loop)]
 pub fn set_running(id: usize) {
     let _ = mark_task_running(id);
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_running(id: usize) -> bool {
     unsafe {
@@ -486,7 +471,7 @@ pub fn mark_task_running(id: usize) -> bool {
     }
 }
 
-fn can_transition_from(state: TaskState, transition: TaskLifecycleTransition) -> bool {
+const fn can_transition_from(state: TaskState, transition: TaskLifecycleTransition) -> bool {
     match transition {
         TaskLifecycleTransition::Start => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Yield => matches!(state, TaskState::Ready | TaskState::Running),
@@ -496,11 +481,8 @@ fn can_transition_from(state: TaskState, transition: TaskLifecycleTransition) ->
     }
 }
 
-#[allow(dead_code)]
 pub fn can_apply_task_transition(id: usize, transition: TaskLifecycleTransition) -> bool {
-    get_task_state(id)
-        .map(|state| can_transition_from(state, transition))
-        .unwrap_or(false)
+    get_task_state(id).is_some_and(|state| can_transition_from(state, transition))
 }
 
 #[allow(dead_code)]
@@ -532,12 +514,6 @@ pub fn update_context(id: usize, saved_sp: u64, saved_pc: u64) -> bool {
     }
 
     true
-}
-
-#[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
-pub fn mark_started(id: usize) -> bool {
-    mark_task_started(id)
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -682,10 +658,9 @@ fn find_next_task_after<F>(current_id: Option<usize>, mut accept: F) -> Option<u
 where
     F: FnMut(Task) -> bool,
 {
-    let start_slot = match current_id {
-        Some(id) => find_slot_by_id(id).map(|slot| slot + 1).unwrap_or(0),
-        None => 0,
-    };
+    let start_slot = current_id
+        .and_then(find_slot_by_id)
+        .map_or(0, |slot| slot + 1);
 
     for offset in 0..MAX_TASKS {
         let slot = (start_slot + offset) % MAX_TASKS;
@@ -703,34 +678,11 @@ where
     None
 }
 
-// Keep this manual copy for early bare-metal safety.
-// Slice copy/fill caused an early ARM64 exception during task creation.
-#[allow(clippy::manual_memcpy)]
 fn copy_name(dst: &mut [u8; TASK_NAME_LEN], name: &str) {
-    let mut i = 0;
-
-    while i < TASK_NAME_LEN {
-        dst[i] = 0;
-        i += 1;
-    }
-
+    dst.fill(0);
     let bytes = name.as_bytes();
-    let len = min(bytes.len(), TASK_NAME_LEN - 1);
-
-    i = 0;
-
-    while i < len {
-        dst[i] = bytes[i];
-        i += 1;
-    }
-}
-
-fn min(a: usize, b: usize) -> usize {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    let len = core::cmp::min(bytes.len(), TASK_NAME_LEN - 1);
+    dst[..len].copy_from_slice(&bytes[..len]);
 }
 
 fn write_name(name: &[u8; TASK_NAME_LEN]) {
@@ -752,20 +704,6 @@ fn print_state(state: TaskState) {
         TaskState::Finished => uart::write_str("Finished"),
         TaskState::Faulted => uart::write_str("Faulted"),
     }
-}
-
-#[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
-pub fn set_task_state(id: usize, state: TaskState) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].state = state;
-    }
-
-    true
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -795,7 +733,6 @@ pub fn set_task_return_kind(id: usize, kind: TaskReturnKind) -> bool {
     false
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_return_kind(id: usize) -> Option<TaskReturnKind> {
     let slot = find_slot_by_id(id)?;
@@ -840,7 +777,6 @@ pub fn set_task_last_return_context(
     false
 }
 
-#[allow(dead_code)]
 pub fn apply_task_return_transition(
     task_id: usize,
     kind: TaskReturnKind,
@@ -891,7 +827,6 @@ pub fn is_sp_inside_task_stack(id: usize, sp: u64) -> Option<bool> {
     None
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn set_task_can_resume(id: usize, can_resume: bool) -> bool {
     unsafe {
@@ -906,14 +841,12 @@ pub fn set_task_can_resume(id: usize, can_resume: bool) -> bool {
     false
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn can_task_resume(id: usize) -> Option<bool> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].can_resume })
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_last_task_sp(id: usize) -> Option<u64> {
     let slot = find_slot_by_id(id)?;
@@ -927,7 +860,6 @@ pub fn get_task_last_kernel_sp(id: usize) -> Option<u64> {
     Some(unsafe { TASKS[slot].last_kernel_sp })
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_last_kernel_return_pc(id: usize) -> Option<u64> {
     let slot = find_slot_by_id(id)?;
@@ -950,7 +882,6 @@ pub fn find_first_resumable_task() -> Option<usize> {
     None
 }
 
-#[allow(dead_code)]
 pub fn print_yes_no(value: bool) {
     if value {
         uart::write_str("yes");
@@ -974,21 +905,10 @@ pub fn set_task_cpu_context(id: usize, context: TaskCpuContext) -> bool {
     true
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn get_task_cpu_context(id: usize) -> Option<TaskCpuContext> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].cpu_context })
-}
-
-#[allow(dead_code)]
-pub fn get_task_resume_pc(id: usize) -> Option<u64> {
-    get_task_cpu_context(id).map(|context| context.resume_pc)
-}
-
-#[allow(dead_code)]
-pub fn get_task_entry_addr(id: usize) -> Option<u64> {
-    get_task_entry(id).map(|entry| entry as *const () as usize as u64)
 }
 
 pub fn get_task_resume_frame(
@@ -997,15 +917,6 @@ pub fn get_task_resume_frame(
     get_task_cpu_context(id)
 }
 
-#[allow(dead_code)]
-pub fn print_task_resume_frame_by_id(id: usize) {
-    match get_task_resume_frame(id) {
-        Some(frame) => crate::kernel::task::cpu_context::print_cpu_context(frame),
-        None => uart::write_str("none"),
-    }
-}
-
-#[allow(dead_code)]
 pub fn set_last_returned_task_id(id: usize) {
     unsafe {
         LAST_RETURNED_TASK_ID = Some(id);
@@ -1017,7 +928,6 @@ pub fn get_last_returned_task_id() -> Option<usize> {
     unsafe { LAST_RETURNED_TASK_ID }
 }
 
-#[allow(dead_code)]
 pub fn is_task_ready(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Ready))
 }
@@ -1027,7 +937,6 @@ pub fn is_task_running(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Running))
 }
 
-#[allow(dead_code)]
 pub fn is_ready_running_faulted_finished_invariant_ok(id: usize) -> bool {
     match get_task_state(id) {
         Some(TaskState::Ready) => {
@@ -1055,7 +964,6 @@ pub fn can_dispatch_from_ready(id: usize) -> bool {
     feature = "scheduler_reentry_test",
     feature = "scheduler_dispatch_test"
 ))]
-#[allow(dead_code)]
 pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     let state = get_task_state(id)?;
     let last_return = get_task_return_kind(id)?;
@@ -1073,7 +981,6 @@ pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     feature = "scheduler_reentry_test",
     feature = "scheduler_dispatch_test"
 ))]
-#[allow(dead_code)]
 pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
     let id = get_last_returned_task_id()?;
     get_task_return_snapshot(id)
@@ -1090,7 +997,6 @@ pub fn is_resumable_task(id: usize) -> bool {
         && is_resume_frame_safe_for_task(id)
 }
 
-#[allow(dead_code)]
 pub fn is_resume_frame_safe_for_task(id: usize) -> bool {
     let Some(frame) = get_task_resume_frame(id) else {
         return false;
@@ -1111,7 +1017,6 @@ pub fn is_fresh_ready_task(id: usize) -> bool {
     can_dispatch_from_ready(id) && !has_started(id) && matches!(can_task_resume(id), Some(false))
 }
 
-#[allow(dead_code)]
 pub fn is_dispatchable_task(id: usize) -> bool {
     is_resumable_task(id) || is_fresh_ready_task(id)
 }
@@ -1221,7 +1126,6 @@ pub fn print_task_fault_reason(reason: TaskFaultReason) {
     }
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn get_task_id_at_slot(slot: usize) -> Option<usize> {
     if slot >= MAX_TASKS {
@@ -1241,7 +1145,6 @@ pub fn is_task_finished(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Finished))
 }
 
-#[allow(dead_code)]
 pub fn is_task_faulted(id: usize) -> bool {
     matches!(get_task_state(id), Some(TaskState::Faulted))
 }
@@ -1251,7 +1154,6 @@ pub fn is_terminal_task(id: usize) -> bool {
     is_task_finished(id) || is_task_faulted(id)
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn count_dispatchable_tasks() -> usize {
     let mut count = 0;
@@ -1276,7 +1178,6 @@ pub fn has_dispatchable_tasks() -> bool {
     count_dispatchable_tasks() > 0
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn find_first_task_by_state(state: TaskState) -> Option<usize> {
     unsafe {
@@ -1304,7 +1205,6 @@ pub fn find_first_faulted_task() -> Option<usize> {
     find_first_task_by_state(TaskState::Faulted)
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy)]
 pub struct TerminalTaskDispatchInvariantSnapshot {
@@ -1315,7 +1215,6 @@ pub struct TerminalTaskDispatchInvariantSnapshot {
     pub result: bool,
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn get_terminal_task_dispatch_invariants(id: usize) -> TerminalTaskDispatchInvariantSnapshot {
     let terminal = is_terminal_task(id);
@@ -1334,13 +1233,11 @@ pub fn get_terminal_task_dispatch_invariants(id: usize) -> TerminalTaskDispatchI
     }
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn validate_terminal_task_dispatch_invariants(id: usize) -> bool {
     get_terminal_task_dispatch_invariants(id).result
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy)]
 pub struct BreakpointFaultMetadataAssertionSnapshot {
@@ -1351,7 +1248,6 @@ pub struct BreakpointFaultMetadataAssertionSnapshot {
     pub result: bool,
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn get_breakpoint_fault_metadata_assertions(
     id: usize,
@@ -1379,7 +1275,6 @@ pub fn get_breakpoint_fault_metadata_assertions(
     }
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_reentry_test")]
 #[derive(Clone, Copy)]
 pub struct TaskFaultCompletionSnapshot {
@@ -1396,7 +1291,6 @@ pub struct TaskFaultCompletionSnapshot {
     pub result: bool,
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "scheduler_reentry_test")]
 pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
     let finished_task_id = find_first_finished_task();
@@ -1439,7 +1333,6 @@ pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
     }
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_finished(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
@@ -1458,7 +1351,6 @@ pub fn mark_task_finished(id: usize) -> bool {
     true
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_ready_after_yield(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
@@ -1499,7 +1391,6 @@ pub fn mark_task_blocked_until(id: usize, wake_tick: u64) -> bool {
     true
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_blocked_for_sleep(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
@@ -1518,7 +1409,6 @@ pub fn mark_task_blocked_for_sleep(id: usize) -> bool {
     true
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
     let mut woke = 0;
@@ -1552,7 +1442,6 @@ pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
     woke
 }
 
-#[allow(dead_code)]
 #[allow(clippy::needless_range_loop)]
 pub fn mark_task_faulted(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {

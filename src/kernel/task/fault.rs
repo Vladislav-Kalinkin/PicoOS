@@ -1,12 +1,12 @@
 use crate::drivers::uart;
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TrapFaultClassification {
     KernelFault,
     TaskFault,
 }
 
-#[allow(dead_code)]
 pub fn classify_current_trap_fault() -> TrapFaultClassification {
     match crate::kernel::task::debug::current_trap_execution_context() {
         crate::kernel::task::debug::TrapExecutionContext::Kernel => {

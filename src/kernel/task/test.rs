@@ -5,30 +5,55 @@ mod handoff;
 mod invariants;
 mod reentry;
 mod resume;
-#[allow(unused_imports)]
 use crate::kernel::task::debug::{
-    debug_current_stack_start, debug_current_stack_top, debug_current_task_id,
-    debug_kernel_sp_before_task, debug_last_task_sp, debug_task_return_kind,
+    debug_current_task_id, debug_kernel_sp_before_task, debug_last_task_sp, debug_task_return_kind,
+};
+
+#[cfg(any(
+    not(feature = "task_yield_test"),
+    all(
+        feature = "task_yield_test",
+        not(feature = "two_yield_task_test"),
+        not(feature = "two_task_resume_handoff_test"),
+        not(feature = "scheduler_fault_lifecycle_test")
+    )
+))]
+use crate::kernel::task::debug::{debug_current_stack_start, debug_current_stack_top};
+
+#[cfg(feature = "task_yield_test")]
+use crate::kernel::task::debug::{
     set_debug_current_stack_bounds, set_debug_current_task_id, set_debug_kernel_return_pc,
     set_debug_kernel_sp_before_task, set_debug_task_run_stage, task_return_point,
 };
 
-#[allow(unused_imports)]
-use crate::kernel::task::entry::task_trampoline;
-
-#[allow(unused_imports)]
 use crate::kernel::task::table::{
-    create_task, get_task_entry, get_task_stack_start, get_task_stack_top, print_task_name_by_id,
-    print_tasks, TaskReturnContext, TaskReturnKind,
+    TaskReturnContext, TaskReturnKind, create_task, print_task_name_by_id, print_tasks,
 };
 
-#[allow(unused_imports)]
+#[cfg(feature = "task_yield_test")]
+use crate::kernel::task::table::{get_task_entry, get_task_stack_start, get_task_stack_top};
+
+#[cfg(any(
+    feature = "task_fault_test",
+    feature = "scheduler_fault_lifecycle_test",
+    feature = "kernel_fault_guard_test"
+))]
 pub use fault::*;
-#[allow(unused_imports)]
+#[cfg(feature = "two_task_resume_handoff_test")]
 pub use handoff::*;
-#[allow(unused_imports)]
+#[cfg(any(
+    feature = "scheduler_reentry_test",
+    feature = "scheduler_fault_lifecycle_test",
+    feature = "two_task_resume_handoff_test",
+    feature = "two_yield_task_test"
+))]
 pub use reentry::*;
-#[allow(unused_imports)]
+#[cfg(any(
+    feature = "resume_candidate_test",
+    feature = "resume_preflight_test",
+    feature = "resume_dry_run_test",
+    feature = "resume_restore_test"
+))]
 pub use resume::*;
 
 #[cfg(not(feature = "task_yield_test"))]

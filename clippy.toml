@@ -1,0 +1,33 @@
+# PicoOS Clippy policy (Hygiene / Phase 0).
+#
+# CI and scripts/check-all.sh deny warnings plus extra groups/lints listed
+# in CLIPPY_FLAGS. This file tightens thresholds and documents kernel-specific
+# Clippy configuration. `avoid-breaking-exported-api` is false: this is a
+# binary kernel, not a versioned library.
+#
+# Restriction is not enabled as a group (it contains lints that fight a
+# kernel: indexing, integer arithmetic, as-casts). Individual restriction
+# lints are denied from Cargo.toml [lints.clippy].
+
+msrv = "1.97.1"
+avoid-breaking-exported-api = false
+
+# Groups (pedantic/nursery/cargo plus selected restriction lints) are denied
+# from Cargo.toml and scripts/check-all.sh. Thresholds here make those lints
+# stricter than Clippy defaults where a kernel can still be honest.
+cognitive-complexity-threshold = 25
+too-many-arguments-threshold = 6
+too-many-lines-threshold = 100
+type-complexity-threshold = 200
+enum-variant-name-threshold = 3
+accept-comment-above-statement = true
+accept-comment-above-attributes = true
+allow-expect-in-tests = false
+allow-unwrap-in-tests = false
+allow-dbg-in-tests = false
+allow-print-in-tests = false
+allow-panic-in-tests = false
+allow-mixed-uninlined-format-args = false
+check-private-items = true
+warn-on-all-wildcard-imports = true
+disallowed-names = ["foo", "bar", "baz", "quux", "tmp", "temp"]

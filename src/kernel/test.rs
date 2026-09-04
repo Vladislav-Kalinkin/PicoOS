@@ -88,48 +88,23 @@ fn runtime_bootstrap_basic_tasks() {
     crate::kernel::task::test_tasks();
 }
 
-#[allow(dead_code)]
 #[cfg(feature = "task_yield_test")]
 fn runtime_bootstrap_task_yield() {
     run_memory_tests();
     crate::kernel::task::test_tasks_with_yield_worker();
 }
 
-#[allow(dead_code)]
-#[cfg(not(feature = "task_yield_test"))]
-fn runtime_bootstrap_task_yield() {
-    crate::arch::halt();
-}
-
-#[allow(dead_code)]
 #[cfg(feature = "kernel_fault_guard_test")]
 fn runtime_bootstrap_kernel_fault_guard() {
     crate::kernel::task::test_kernel_fault_guard();
 }
 
-#[allow(dead_code)]
-#[cfg(not(feature = "kernel_fault_guard_test"))]
-fn runtime_bootstrap_kernel_fault_guard() {
-    crate::arch::halt();
-}
-
-#[allow(dead_code)]
 #[cfg(feature = "task_yield_test")]
 fn runtime_after_scheduler_task_yield() {
     crate::kernel::task::test_task_yield();
 }
 
-#[allow(dead_code)]
-#[cfg(not(feature = "task_yield_test"))]
-fn runtime_after_scheduler_task_yield() {}
-
-#[allow(dead_code)]
-fn runtime_after_scheduler_noop() {}
-
-#[allow(dead_code)]
-fn runtime_selftest_scenario_name() -> &'static str {
-    runtime_selftest_scenario().name
-}
+const fn runtime_after_scheduler_noop() {}
 
 #[cfg(feature = "selftest")]
 pub fn run_selftests() -> ! {

@@ -10,6 +10,7 @@ pub fn task_trampoline(entry: TaskEntry) -> ! {
     uart::write_line("");
     uart::write_line("task trampoline:");
     uart::write_str("calling entry: ");
+    #[allow(clippy::fn_to_numeric_cast_any)]
     uart::write_hex_u64(entry as usize as u64);
     uart::write_line("");
 
@@ -18,7 +19,7 @@ pub fn task_trampoline(entry: TaskEntry) -> ! {
     task_exit();
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn task_trampoline_raw(entry_addr: usize) -> ! {
     let entry: TaskEntry = unsafe { core::mem::transmute(entry_addr) };
 
@@ -53,7 +54,10 @@ pub fn task_exit() -> ! {
     crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
 }
 
-#[allow(dead_code)]
+#[cfg(any(
+    feature = "task_fault_test",
+    feature = "scheduler_fault_lifecycle_test",
+))]
 pub fn task_fault() -> ! {
     uart::write_line("task fault requested");
 
@@ -78,33 +82,12 @@ pub fn task_fault() -> ! {
     crate::kernel::task::fault::return_current_task_fault(current_sp, kernel_sp, return_pc);
 }
 
-#[allow(dead_code)]
-pub fn simulated_task_trap_fault() -> ! {
-    uart::write_line("simulated task trap fault requested");
-
-    let current_sp = crate::arch::stack_pointer();
-    let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
-    let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
-
-    uart::write_str("simulated trap current SP: ");
-    uart::write_hex_u64(current_sp);
-    uart::write_line("");
-
-    uart::write_str("simulated trap saved kernel SP: ");
-    uart::write_hex_u64(kernel_sp);
-    uart::write_line("");
-
-    uart::write_str("simulated trap return PC: ");
-    uart::write_hex_u64(return_pc);
-    uart::write_line("");
-
-    uart::write_line("simulated trap classified as task fault");
-    uart::write_line("returning to kernel stack after simulated task trap...");
-
-    crate::kernel::task::fault::return_current_task_fault(current_sp, kernel_sp, return_pc);
-}
-
-#[allow(dead_code)]
+#[cfg(any(
+    feature = "task_yield_test",
+    feature = "two_yield_task_test",
+    feature = "two_task_resume_handoff_test",
+    feature = "scheduler_fault_lifecycle_test",
+))]
 pub fn yield_now() {
     crate::drivers::uart::write_line("task yield requested");
 
@@ -126,7 +109,7 @@ pub fn yield_now() {
     }
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "task_sleep_runtime_e2e_test")]
 pub fn task_sleep_ticks(ticks: u64) {
     let task_id = crate::kernel::task::debug::debug_current_task_id();
     let wake_tick = crate::kernel::ticks::get().saturating_add(ticks.max(1));
@@ -145,120 +128,5 @@ pub fn task_sleep_ticks(ticks: u64) {
 
     unsafe {
         crate::arch::task_yield_boundary(kernel_sp, return_pc);
-    }
-}
-
-#[allow(dead_code)]
-fn print_returning_yield_task_layer_precheck(
-    task_sp: u64,
-    resume_pc: u64,
-    kernel_sp: u64,
-    return_pc: u64,
-) -> bool {
-    crate::drivers::uart::write_line("returning yield task-layer precheck:");
-
-    let task_id = crate::kernel::task::debug::debug_current_task_id();
-
-    let task_sp_inside_stack = matches!(
-        crate::kernel::task::table::is_sp_inside_task_stack(task_id, task_sp),
-        Some(true)
-    );
-
-    let resume_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(resume_pc);
-    let kernel_sp_nonzero = kernel_sp != 0;
-    let return_pc_inside_text = crate::kernel::memory::is_inside_kernel_text(return_pc);
-
-    crate::drivers::uart::write_str("  task: ");
-    crate::kernel::task::table::print_task_name_by_id(task_id);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("  task_sp inside current task stack: ");
-    crate::kernel::task::table::print_yes_no(task_sp_inside_stack);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("  resume_pc inside kernel text: ");
-    crate::kernel::task::table::print_yes_no(resume_pc_inside_text);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("  kernel_sp non-zero: ");
-    crate::kernel::task::table::print_yes_no(kernel_sp_nonzero);
-    crate::drivers::uart::write_line("");
-
-    crate::drivers::uart::write_str("  return_pc inside kernel text: ");
-    crate::kernel::task::table::print_yes_no(return_pc_inside_text);
-    crate::drivers::uart::write_line("");
-
-    let ok =
-        task_sp_inside_stack && resume_pc_inside_text && kernel_sp_nonzero && return_pc_inside_text;
-
-    crate::drivers::uart::write_str("  result: ");
-    if ok {
-        crate::drivers::uart::write_line("OK");
-    } else {
-        crate::drivers::uart::write_line("FAILED");
-    }
-
-    ok
-}
-
-#[allow(dead_code)]
-pub fn simulated_real_trap_fault() -> ! {
-    uart::write_line("simulated real trap fault requested");
-
-    crate::kernel::task::debug::print_trap_execution_context();
-
-    crate::kernel::task::fault::print_current_trap_fault_classification();
-
-    match crate::kernel::task::fault::classify_current_trap_fault() {
-        crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
-            uart::write_line("simulated real trap result: kernel fault");
-
-            uart::write_line("kernel fault action: halt");
-
-            crate::arch::halt();
-        }
-
-        crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
-            uart::write_line("simulated real trap result: task fault");
-
-            let Some(task_id) = crate::kernel::task::fault::record_current_task_fault(
-                crate::arch::cpu::mcause(),
-                crate::arch::cpu::mepc(),
-                crate::arch::cpu::mtval(),
-            ) else {
-                crate::arch::halt();
-            };
-
-            uart::write_str("  task: ");
-            crate::kernel::task::table::print_task_name_by_id(task_id);
-            uart::write_line("");
-            uart::write_str("  new state: ");
-            crate::kernel::task::table::print_task_state_by_id(task_id);
-            uart::write_line("");
-            uart::write_str("  can_resume: ");
-            match crate::kernel::task::table::can_task_resume(task_id) {
-                Some(true) => uart::write_line("yes"),
-                Some(false) => uart::write_line("no"),
-                None => uart::write_line("unknown"),
-            }
-
-            let current_sp = crate::arch::stack_pointer();
-            let kernel_sp = crate::kernel::task::debug::debug_kernel_sp_before_task();
-            let return_pc = crate::kernel::task::debug::debug_kernel_return_pc();
-
-            uart::write_str("simulated real trap current SP: ");
-            uart::write_hex_u64(current_sp);
-            uart::write_line("");
-            uart::write_str("simulated real trap saved kernel SP: ");
-            uart::write_hex_u64(kernel_sp);
-            uart::write_line("");
-            uart::write_str("simulated real trap return PC: ");
-            uart::write_hex_u64(return_pc);
-            uart::write_line("");
-            uart::write_line("simulated real trap classified as task fault");
-            uart::write_line("returning to kernel stack after simulated real trap...");
-
-            crate::kernel::task::fault::return_current_task_fault(current_sp, kernel_sp, return_pc);
-        }
     }
 }

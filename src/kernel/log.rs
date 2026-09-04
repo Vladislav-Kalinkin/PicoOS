@@ -35,7 +35,6 @@ fn prefix(level: &str, scope: &str) {
     uart::write_str("] ");
 }
 
-#[allow(dead_code)]
 pub fn info(scope: &str, message: &str) {
     if !scope_enabled(scope) {
         return;
@@ -53,7 +52,6 @@ pub fn ok(scope: &str, message: &str) {
     uart::write_line(message);
 }
 
-#[allow(dead_code)]
 pub fn fail(scope: &str, message: &str) {
     if !scope_enabled(scope) {
         return;

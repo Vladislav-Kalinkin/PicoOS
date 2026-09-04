@@ -1,12 +1,40 @@
 #![no_std]
 #![no_main]
-#![cfg_attr(feature = "selftest", allow(dead_code))]
+// Test/scenario features compile helpers that the other `kernel_main` path
+// does not call. Default (no features) still denies unused code.
 #![cfg_attr(
-    feature = "kernel_fault_guard_test",
-    allow(dead_code, unreachable_code)
+    any(
+        feature = "selftest",
+        feature = "task_yield_test",
+        feature = "resume_candidate_test",
+        feature = "resume_preflight_test",
+        feature = "resume_dry_run_test",
+        feature = "resume_restore_test",
+        feature = "real_resume_restore_test",
+        feature = "real_resume_restore_jump",
+        feature = "two_yield_task_test",
+        feature = "scheduler_resume_loop_test",
+        feature = "verbose_resume_debug",
+        feature = "scheduler_dispatch_test",
+        feature = "scheduler_run_test",
+        feature = "scheduler_reentry_test",
+        feature = "two_task_resume_handoff_test",
+        feature = "task_fault_test",
+        feature = "kernel_fault_guard_test",
+        feature = "scheduler_verbose_dispatch_trace",
+        feature = "task_sleep_test",
+        feature = "task_sleep_runtime_e2e_test",
+        feature = "kernel_log_scoped",
+        feature = "log_trap",
+        feature = "log_timer",
+        feature = "log_fault",
+        feature = "log_sleep",
+        feature = "timer_preemption_prototype",
+        feature = "scheduler_fault_lifecycle_test"
+    ),
+    allow(dead_code, unused_imports, unreachable_code)
 )]
 
-use core::arch::asm;
 use core::panic::PanicInfo;
 
 mod arch;
@@ -16,14 +44,15 @@ mod platform;
 
 use crate::drivers::uart;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
     uart::write_line("");
     kernel::banner::print_boot_banner();
 
     uart::write_line("arch: riscv64");
     uart::write_line("target arch: riscv64");
-    uart::write_line("platform: QEMU virt riscv64");
+    uart::write_str("platform: ");
+    uart::write_line(crate::platform::NAME);
     uart::write_line("status: kernel started");
     kernel::banner::print_capabilities();
 
@@ -87,15 +116,8 @@ pub extern "C" fn kernel_main() -> ! {
     }
 }
 
-#[allow(dead_code)]
-fn trigger_test_exception() {
-    unsafe {
-        asm!("ebreak", options(nomem, nostack, preserves_flags));
-    }
-}
-
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(_info: &PanicInfo<'_>) -> ! {
     uart::write_line("");
     uart::write_line("KERNEL PANIC");
 

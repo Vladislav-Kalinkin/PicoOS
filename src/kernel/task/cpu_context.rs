@@ -25,8 +25,7 @@ impl TaskCpuContext {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn is_valid(&self) -> bool {
+    pub const fn is_valid(&self) -> bool {
         self.sp != 0 && self.return_pc != 0 && self.resume_pc != 0
     }
 }
