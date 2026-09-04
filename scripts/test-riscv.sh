@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cargo clean
-cargo build --features selftest
+cargo build --features "scenario_reap"
 
 qemu-system-riscv64 \
   -M virt \

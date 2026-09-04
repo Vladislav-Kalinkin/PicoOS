@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.1.64"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97.1"
 
@@ -17,8 +17,18 @@ panic = "abort"
 panic = "abort"
 
 [features]
-# Scenario / log selectors. Dispatch/run/handle_task_return compile without
-# these; PR21 will collapse the resume_* ladder into scenario_* names.
+# Public scenario selectors (PR21). Internal resume_* / scheduler_* flags
+# remain as the implementation of these clusters.
+scenario_resume = ["task_resume_selftest"]
+scenario_sleep = ["task_sleep_runtime_e2e_selftest"]
+scenario_handoff = ["two_task_resume_handoff_selftest"]
+scenario_fault = ["scheduler_fault_lifecycle_test"]
+scenario_preempt = ["timer_preemption_selftest"]
+scenario_kernel_fault = ["kernel_fault_guard_test"]
+scenario_reap = ["selftest"]
+scenario_run = ["scheduler_run_selftest"]
+scenario_reentry = ["scheduler_reentry_selftest"]
+
 selftest = []
 task_yield_test = []
 resume_candidate_test = []

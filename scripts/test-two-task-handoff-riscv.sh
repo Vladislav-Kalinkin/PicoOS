@@ -3,6 +3,6 @@ set -euo pipefail
 
 cargo clean
 
-cargo build --features "two_task_resume_handoff_selftest"
+cargo build --features "scenario_handoff"
 
 scripts/qemu-expect.sh "scheduler resume loop result: OK"

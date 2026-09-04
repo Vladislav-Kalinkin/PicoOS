@@ -3,6 +3,6 @@ set -euo pipefail
 
 cargo clean
 
-cargo build --features "task_resume_selftest,task_sleep_test"
+cargo build --features "scenario_sleep"
 
 scripts/qemu-expect.sh "task sleep wake result: OK"

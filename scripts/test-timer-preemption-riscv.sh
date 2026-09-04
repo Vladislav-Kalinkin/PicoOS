@@ -3,6 +3,6 @@ set -euo pipefail
 
 cargo clean
 
-cargo build --features "timer_preemption_selftest"
+cargo build --features "scenario_preempt"
 
 scripts/qemu-expect.sh "timer preemption result: OK"

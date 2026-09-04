@@ -3,6 +3,6 @@ set -euo pipefail
 
 cargo clean
 
-cargo build --features "task_sleep_runtime_e2e_selftest"
+cargo build --features "scenario_sleep"
 
 scripts/qemu-expect.sh "task sleep runtime e2e result: OK"
