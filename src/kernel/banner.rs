@@ -15,7 +15,6 @@ pub fn print_capabilities() {
     uart::write_line("- exception/trap handling");
     uart::write_line("- timer interrupts");
     uart::write_line("- page allocator");
-    uart::write_line("- kernel heap");
     uart::write_line("- task table");
     uart::write_line("- task stacks");
     uart::write_line("- cooperative task runner skeleton");

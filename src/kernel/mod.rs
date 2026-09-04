@@ -1,6 +1,5 @@
 pub mod banner;
 pub mod cpu;
-pub mod heap;
 pub mod irq_cell;
 pub mod log;
 pub mod memory;

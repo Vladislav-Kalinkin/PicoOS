@@ -59,8 +59,37 @@ fn runtime_selftest_scenario() -> RuntimeSelftestScenario {
 pub fn run_memory_tests() {
     kernel::memory::print_memory_layout();
     kernel::memory::test_page_allocator();
-    kernel::heap::test_heap();
+    test_page_alloc_free_four();
     kernel::memory::print_mm_stats();
+}
+
+fn test_page_alloc_free_four() {
+    uart::write_line("");
+    uart::write_line("page alloc/free 4:");
+
+    let used_before = kernel::memory::stats().used;
+    let Some(base) = kernel::memory::alloc_pages(4) else {
+        uart::write_line("page alloc 4: FAILED");
+        return;
+    };
+
+    uart::write_str("page alloc 4: ");
+    uart::write_hex_u64(base.addr());
+    uart::write_line("");
+
+    if kernel::memory::stats().used != used_before + 4 {
+        uart::write_line("page alloc 4: FAILED used");
+        kernel::memory::free_pages(base, 4);
+        return;
+    }
+
+    kernel::memory::free_pages(base, 4);
+
+    if kernel::memory::stats().used == used_before {
+        uart::write_line("page alloc/free 4: OK");
+    } else {
+        uart::write_line("page alloc/free 4: FAILED used after free");
+    }
 }
 
 pub fn print_test_complete() {
