@@ -3,7 +3,7 @@ use crate::kernel::memory;
 use crate::kernel::task::context;
 use crate::kernel::task::cpu_context::{self, TaskCpuContext};
 
-pub const MAX_TASKS: usize = 4;
+pub const MAX_TASKS: usize = 8;
 
 #[allow(dead_code)]
 pub const fn max_tasks() -> usize {
@@ -152,13 +152,38 @@ impl Task {
 }
 
 static mut TASKS: [Task; MAX_TASKS] = [Task::empty(); MAX_TASKS];
-static mut NEXT_TASK_ID: usize = 0;
+
+fn snapshot_tasks() -> [Task; MAX_TASKS] {
+    unsafe { core::ptr::read(core::ptr::addr_of!(TASKS)) }
+}
+
+fn write_tasks(tasks: &[Task; MAX_TASKS]) {
+    unsafe {
+        core::ptr::write(core::ptr::addr_of_mut!(TASKS), *tasks);
+    }
+}
+
+/// Occupied slot for `id`. Task ids are slot indices: `id == slot`.
+fn find_slot_by_id(id: usize) -> Option<usize> {
+    if id >= MAX_TASKS {
+        return None;
+    }
+
+    unsafe {
+        if !matches!(TASKS[id].state, TaskState::Empty) && TASKS[id].id == id {
+            Some(id)
+        } else {
+            None
+        }
+    }
+}
 
 pub fn init() {
-    unsafe {
-        TASKS = [Task::empty(); MAX_TASKS];
-        NEXT_TASK_ID = 0;
+    let mut tasks = [Task::empty(); MAX_TASKS];
+    for (slot, task) in tasks.iter_mut().enumerate() {
+        task.id = slot;
     }
+    write_tasks(&tasks);
 
     uart::write_line("");
     uart::write_line("task system:");
@@ -167,308 +192,242 @@ pub fn init() {
     uart::write_line("");
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
+    let slot = snapshot_tasks()
+        .iter()
+        .position(|task| matches!(task.state, TaskState::Empty))?;
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if matches!(TASKS[slot].state, TaskState::Empty) {
-                let Some(stack_start) = memory::allocate_page() else {
-                    uart::write_str("failed to allocate stack for task: ");
-                    uart::write_line(name);
-                    return None;
-                };
+        let Some(stack_start) = memory::allocate_page() else {
+            uart::write_str("failed to allocate stack for task: ");
+            uart::write_line(name);
+            return None;
+        };
 
-                let Some(stack_top) = stack_start.checked_add(memory::PAGE_SIZE) else {
-                    uart::write_str("invalid stack range for task: ");
-                    uart::write_line(name);
-                    return None;
-                };
-                let initial_sp = stack_top;
-                let initial_pc = entry as *const () as usize as u64;
+        let Some(stack_top) = stack_start.checked_add(memory::PAGE_SIZE) else {
+            uart::write_str("invalid stack range for task: ");
+            uart::write_line(name);
+            return None;
+        };
+        let initial_sp = stack_top;
+        let initial_pc = entry as *const () as usize as u64;
 
-                let Some(prepared_sp) = context::prepare_initial_stack(stack_top, initial_pc)
-                else {
-                    uart::write_str("failed to prepare stack for task: ");
-                    uart::write_line(name);
-                    return None;
-                };
+        let Some(prepared_sp) = context::prepare_initial_stack(stack_top, initial_pc) else {
+            uart::write_str("failed to prepare stack for task: ");
+            uart::write_line(name);
+            return None;
+        };
 
-                let saved_sp = prepared_sp;
-                let saved_pc = initial_pc;
+        let saved_sp = prepared_sp;
+        let saved_pc = initial_pc;
+        let id = slot;
 
-                let id = NEXT_TASK_ID;
-                NEXT_TASK_ID += 1;
+        TASKS[slot].id = id;
+        TASKS[slot].state = TaskState::Ready;
+        TASKS[slot].stack_start = stack_start;
+        TASKS[slot].stack_top = stack_top;
+        TASKS[slot].entry = Some(entry);
+        TASKS[slot].initial_sp = initial_sp;
+        TASKS[slot].initial_pc = initial_pc;
+        TASKS[slot].saved_sp = saved_sp;
+        TASKS[slot].saved_pc = saved_pc;
+        TASKS[slot].cpu_context = TaskCpuContext::initial(saved_sp, saved_pc);
+        TASKS[slot].last_kernel_sp = 0;
+        TASKS[slot].last_kernel_return_pc = 0;
+        TASKS[slot].last_task_sp = 0;
+        TASKS[slot].has_started = false;
+        TASKS[slot].can_resume = false;
+        TASKS[slot].last_return_kind = TaskReturnKind::None;
+        TASKS[slot].sleep_until_tick = None;
 
-                TASKS[slot].id = id;
-                TASKS[slot].state = TaskState::Ready;
-                TASKS[slot].stack_start = stack_start;
-                TASKS[slot].stack_top = stack_top;
-                TASKS[slot].entry = Some(entry);
-                TASKS[slot].initial_sp = initial_sp;
-                TASKS[slot].initial_pc = initial_pc;
-                TASKS[slot].saved_sp = saved_sp;
-                TASKS[slot].saved_pc = saved_pc;
-                TASKS[slot].cpu_context = TaskCpuContext::initial(saved_sp, saved_pc);
-                TASKS[slot].last_kernel_sp = 0;
-                TASKS[slot].last_kernel_return_pc = 0;
-                TASKS[slot].last_task_sp = 0;
-                TASKS[slot].has_started = false;
-                TASKS[slot].can_resume = false;
-                TASKS[slot].last_return_kind = TaskReturnKind::None;
-                TASKS[slot].sleep_until_tick = None;
+        copy_name(&mut TASKS[slot].name, name);
 
-                copy_name(&mut TASKS[slot].name, name);
+        uart::write_str("created task: ");
+        write_name(&TASKS[slot].name);
 
-                uart::write_str("created task: ");
-                write_name(&TASKS[slot].name);
+        uart::write_str(" stack: ");
+        uart::write_hex_u64(stack_start);
 
-                uart::write_str(" stack: ");
-                uart::write_hex_u64(stack_start);
+        uart::write_str(" - ");
+        uart::write_hex_u64(stack_top);
 
-                uart::write_str(" - ");
-                uart::write_hex_u64(stack_top);
+        uart::write_str(" entry: ");
+        uart::write_hex_u64(initial_pc);
 
-                uart::write_str(" entry: ");
-                uart::write_hex_u64(initial_pc);
+        uart::write_str(" initial_sp: ");
+        uart::write_hex_u64(initial_sp);
 
-                uart::write_str(" initial_sp: ");
-                uart::write_hex_u64(initial_sp);
+        uart::write_str(" initial_pc: ");
+        uart::write_hex_u64(initial_pc);
 
-                uart::write_str(" initial_pc: ");
-                uart::write_hex_u64(initial_pc);
+        uart::write_str(" prepared_sp: ");
+        uart::write_hex_u64(prepared_sp);
 
-                uart::write_str(" prepared_sp: ");
-                uart::write_hex_u64(prepared_sp);
+        context::print_initial_context(prepared_sp);
 
-                context::print_initial_context(prepared_sp);
+        uart::write_line("");
 
-                uart::write_line("");
-
-                return Some(id);
-            }
-        }
+        Some(id)
     }
-
-    None
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn print_tasks() {
     uart::write_line("task list:");
 
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            let task = TASKS[slot];
-
-            if matches!(task.state, TaskState::Empty) {
-                continue;
-            }
-
-            uart::write_str("id: ");
-            uart::write_dec_u64(task.id as u64);
-
-            uart::write_str(" state: ");
-            print_state(task.state);
-
-            uart::write_str(" name: ");
-            write_name(&task.name);
-
-            uart::write_str(" stack: ");
-            uart::write_hex_u64(task.stack_start);
-
-            uart::write_str(" - ");
-            uart::write_hex_u64(task.stack_top);
-
-            uart::write_str(" entry: ");
-            match task.entry {
-                Some(entry) => uart::write_hex_u64(entry as *const () as usize as u64),
-                None => uart::write_str("none"),
-            }
-
-            uart::write_str(" initial_sp: ");
-            uart::write_hex_u64(task.initial_sp);
-
-            uart::write_str(" initial_pc: ");
-            uart::write_hex_u64(task.initial_pc);
-
-            uart::write_str(" saved_sp: ");
-            uart::write_hex_u64(task.saved_sp);
-
-            uart::write_str(" saved_pc: ");
-            uart::write_hex_u64(task.saved_pc);
-
-            cpu_context::print_cpu_context(task.cpu_context);
-
-            if !task.has_started && matches!(task.state, TaskState::Ready) {
-                uart::write_str(" initial_frame:");
-                context::print_initial_context(task.saved_sp);
-            }
-
-            uart::write_str(" started: ");
-            if task.has_started {
-                uart::write_str("yes");
-            } else {
-                uart::write_str("no");
-            }
-
-            uart::write_str(" can_resume: ");
-            if task.can_resume {
-                uart::write_str("yes");
-            } else {
-                uart::write_str("no");
-            }
-
-            uart::write_str(" last_return: ");
-            print_task_return_kind(task.last_return_kind);
-
-            uart::write_str(" last_task_sp: ");
-            uart::write_hex_u64(task.last_task_sp);
-
-            uart::write_str(" last_kernel_sp: ");
-            uart::write_hex_u64(task.last_kernel_sp);
-
-            uart::write_str(" last_kernel_return_pc: ");
-            uart::write_hex_u64(task.last_kernel_return_pc);
-
-            uart::write_line("");
+    for task in snapshot_tasks() {
+        if matches!(task.state, TaskState::Empty) {
+            continue;
         }
+
+        uart::write_str("id: ");
+        uart::write_dec_u64(task.id as u64);
+
+        uart::write_str(" state: ");
+        print_state(task.state);
+
+        uart::write_str(" name: ");
+        write_name(&task.name);
+
+        uart::write_str(" stack: ");
+        uart::write_hex_u64(task.stack_start);
+
+        uart::write_str(" - ");
+        uart::write_hex_u64(task.stack_top);
+
+        uart::write_str(" entry: ");
+        match task.entry {
+            Some(entry) => uart::write_hex_u64(entry as *const () as usize as u64),
+            None => uart::write_str("none"),
+        }
+
+        uart::write_str(" initial_sp: ");
+        uart::write_hex_u64(task.initial_sp);
+
+        uart::write_str(" initial_pc: ");
+        uart::write_hex_u64(task.initial_pc);
+
+        uart::write_str(" saved_sp: ");
+        uart::write_hex_u64(task.saved_sp);
+
+        uart::write_str(" saved_pc: ");
+        uart::write_hex_u64(task.saved_pc);
+
+        cpu_context::print_cpu_context(task.cpu_context);
+
+        if !task.has_started && matches!(task.state, TaskState::Ready) {
+            uart::write_str(" initial_frame:");
+            context::print_initial_context(task.saved_sp);
+        }
+
+        uart::write_str(" started: ");
+        if task.has_started {
+            uart::write_str("yes");
+        } else {
+            uart::write_str("no");
+        }
+
+        uart::write_str(" can_resume: ");
+        if task.can_resume {
+            uart::write_str("yes");
+        } else {
+            uart::write_str("no");
+        }
+
+        uart::write_str(" last_return: ");
+        print_task_return_kind(task.last_return_kind);
+
+        uart::write_str(" last_task_sp: ");
+        uart::write_hex_u64(task.last_task_sp);
+
+        uart::write_str(" last_kernel_sp: ");
+        uart::write_hex_u64(task.last_kernel_sp);
+
+        uart::write_str(" last_kernel_return_pc: ");
+        uart::write_hex_u64(task.last_kernel_return_pc);
+
+        uart::write_line("");
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_name(id: usize) -> Option<[u8; TASK_NAME_LEN]> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].name);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].name })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_entry(id: usize) -> Option<TaskEntry> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return TASKS[slot].entry;
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    unsafe { TASKS[slot].entry }
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_stack_start(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].stack_start);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].stack_start })
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_stack_top(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].stack_top);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].stack_top })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_initial_sp(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].initial_sp);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].initial_sp })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_initial_pc(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(TASKS[slot].initial_pc);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    Some(unsafe { TASKS[slot].initial_pc })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_saved_sp(id: usize) -> Option<u64> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].saved_sp })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_saved_pc(id: usize) -> Option<u64> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].saved_pc })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn find_next_ready_after(current_id: Option<usize>) -> Option<usize> {
     find_next_task_after(current_id, |task| matches!(task.state, TaskState::Ready))
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn find_next_dispatchable_after(current_id: Option<usize>) -> Option<usize> {
     find_next_task_after(current_id, |task| is_dispatchable_task(task.id))
 }
 
 #[cfg(feature = "scheduler_reentry_test")]
-#[allow(clippy::needless_range_loop)]
 pub fn set_running(id: usize) {
     let _ = mark_task_running(id);
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn mark_task_running(id: usize) -> bool {
-    unsafe {
-        let Some(target_slot) = (0..MAX_TASKS)
-            .find(|slot| !matches!(TASKS[*slot].state, TaskState::Empty) && TASKS[*slot].id == id)
-        else {
-            return false;
-        };
+    let Some(target_slot) = find_slot_by_id(id) else {
+        return false;
+    };
 
-        if !matches!(
-            TASKS[target_slot].state,
-            TaskState::Ready | TaskState::Running
-        ) {
-            return false;
-        }
-
-        for slot in 0..MAX_TASKS {
-            if matches!(TASKS[slot].state, TaskState::Running) && TASKS[slot].id != id {
-                TASKS[slot].state = TaskState::Ready;
-            }
-        }
-
-        TASKS[target_slot].state = TaskState::Running;
-        true
+    let mut tasks = snapshot_tasks();
+    if !matches!(
+        tasks[target_slot].state,
+        TaskState::Ready | TaskState::Running
+    ) {
+        return false;
     }
+
+    for (slot, task) in tasks.iter_mut().enumerate() {
+        if slot == target_slot {
+            task.state = TaskState::Running;
+        } else if matches!(task.state, TaskState::Running) {
+            task.state = TaskState::Ready;
+        }
+    }
+
+    write_tasks(&tasks);
+    true
 }
 
 const fn can_transition_from(state: TaskState, transition: TaskLifecycleTransition) -> bool {
@@ -501,7 +460,6 @@ pub fn mark_task_started(id: usize) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn update_context(id: usize, saved_sp: u64, saved_pc: u64) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;
@@ -516,7 +474,6 @@ pub fn update_context(id: usize, saved_sp: u64, saved_pc: u64) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn has_started(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;
@@ -640,20 +597,6 @@ pub fn print_task_fault_info_by_id(id: usize) {
     uart::write_line("");
 }
 
-#[allow(clippy::needless_range_loop)]
-fn find_slot_by_id(id: usize) -> Option<usize> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(slot);
-            }
-        }
-    }
-
-    None
-}
-
-#[allow(clippy::needless_range_loop)]
 fn find_next_task_after<F>(current_id: Option<usize>, mut accept: F) -> Option<usize>
 where
     F: FnMut(Task) -> bool,
@@ -661,11 +604,11 @@ where
     let start_slot = current_id
         .and_then(find_slot_by_id)
         .map_or(0, |slot| slot + 1);
+    let snapshot = snapshot_tasks();
 
     for offset in 0..MAX_TASKS {
         let slot = (start_slot + offset) % MAX_TASKS;
-
-        let task = unsafe { TASKS[slot] };
+        let task = snapshot[slot];
         if matches!(task.state, TaskState::Empty) {
             continue;
         }
@@ -706,7 +649,6 @@ fn print_state(state: TaskState) {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_state(id: usize) -> Option<TaskState> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].state })
@@ -719,21 +661,18 @@ pub fn print_task_state_by_id(id: usize) {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn set_task_return_kind(id: usize, kind: TaskReturnKind) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].last_return_kind = kind;
-                return true;
-            }
-        }
+        TASKS[slot].last_return_kind = kind;
     }
 
-    false
+    true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_return_kind(id: usize) -> Option<TaskReturnKind> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].last_return_kind })
@@ -756,25 +695,23 @@ pub fn print_task_return_kind_by_id(id: usize) {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn set_task_last_return_context(
     id: usize,
     task_sp: u64,
     kernel_sp: u64,
     kernel_return_pc: u64,
 ) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].last_task_sp = task_sp;
-                TASKS[slot].last_kernel_sp = kernel_sp;
-                TASKS[slot].last_kernel_return_pc = kernel_return_pc;
-                return true;
-            }
-        }
+        TASKS[slot].last_task_sp = task_sp;
+        TASKS[slot].last_kernel_sp = kernel_sp;
+        TASKS[slot].last_kernel_return_pc = kernel_return_pc;
     }
 
-    false
+    true
 }
 
 pub fn apply_task_return_transition(
@@ -814,68 +751,49 @@ pub fn apply_task_return_transition(
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn is_sp_inside_task_stack(id: usize, sp: u64) -> Option<bool> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return Some(sp >= TASKS[slot].stack_start && sp < TASKS[slot].stack_top);
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    unsafe { Some(sp >= TASKS[slot].stack_start && sp < TASKS[slot].stack_top) }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn set_task_can_resume(id: usize, can_resume: bool) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].can_resume = can_resume;
-                return true;
-            }
-        }
+        TASKS[slot].can_resume = can_resume;
     }
 
-    false
+    true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn can_task_resume(id: usize) -> Option<bool> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].can_resume })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_last_task_sp(id: usize) -> Option<u64> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].last_task_sp })
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_last_kernel_sp(id: usize) -> Option<u64> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].last_kernel_sp })
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_last_kernel_return_pc(id: usize) -> Option<u64> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].last_kernel_return_pc })
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn find_first_resumable_task() -> Option<usize> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            let task = TASKS[slot];
-
-            if matches!(task.state, TaskState::Ready) && is_resumable_task(task.id) {
-                return Some(task.id);
-            }
+    for task in snapshot_tasks() {
+        if matches!(task.state, TaskState::Ready) && is_resumable_task(task.id) {
+            return Some(task.id);
         }
     }
 
@@ -890,7 +808,6 @@ pub fn print_yes_no(value: bool) {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn set_task_cpu_context(id: usize, context: TaskCpuContext) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;
@@ -905,7 +822,6 @@ pub fn set_task_cpu_context(id: usize, context: TaskCpuContext) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_cpu_context(id: usize) -> Option<TaskCpuContext> {
     let slot = find_slot_by_id(id)?;
     Some(unsafe { TASKS[slot].cpu_context })
@@ -1022,7 +938,6 @@ pub fn is_dispatchable_task(id: usize) -> bool {
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn set_task_fault_info(
     id: usize,
     reason: TaskFaultReason,
@@ -1030,18 +945,18 @@ pub fn set_task_fault_info(
     mepc: u64,
     mtval: u64,
 ) -> bool {
+    let Some(slot) = find_slot_by_id(id) else {
+        return false;
+    };
+
     unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                TASKS[slot].last_fault_reason = Some(reason);
-                TASKS[slot].last_fault_mcause = Some(mcause);
-                TASKS[slot].last_fault_mepc = Some(mepc);
-                TASKS[slot].last_fault_mtval = Some(mtval);
-                return true;
-            }
-        }
+        TASKS[slot].last_fault_reason = Some(reason);
+        TASKS[slot].last_fault_mcause = Some(mcause);
+        TASKS[slot].last_fault_mepc = Some(mepc);
+        TASKS[slot].last_fault_mtval = Some(mtval);
     }
-    false
+
+    true
 }
 
 #[allow(dead_code)]
@@ -1056,58 +971,27 @@ pub fn record_task_fault(id: usize, mcause: u64, mepc: u64, mtval: u64) -> Optio
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_fault_reason(id: usize) -> Option<TaskFaultReason> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return TASKS[slot].last_fault_reason;
-            }
-        }
-    }
-    None
+    let slot = find_slot_by_id(id)?;
+    unsafe { TASKS[slot].last_fault_reason }
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_fault_mcause(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return TASKS[slot].last_fault_mcause;
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    unsafe { TASKS[slot].last_fault_mcause }
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_fault_mepc(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return TASKS[slot].last_fault_mepc;
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    unsafe { TASKS[slot].last_fault_mepc }
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn get_task_fault_mtval(id: usize) -> Option<u64> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Empty) && TASKS[slot].id == id {
-                return TASKS[slot].last_fault_mtval;
-            }
-        }
-    }
-
-    None
+    let slot = find_slot_by_id(id)?;
+    unsafe { TASKS[slot].last_fault_mtval }
 }
 
 #[allow(dead_code)]
@@ -1154,19 +1038,16 @@ pub fn is_terminal_task(id: usize) -> bool {
     is_task_finished(id) || is_task_faulted(id)
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn count_dispatchable_tasks() -> usize {
     let mut count = 0;
 
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if matches!(TASKS[slot].state, TaskState::Empty) {
-                continue;
-            }
+    for task in snapshot_tasks() {
+        if matches!(task.state, TaskState::Empty) {
+            continue;
+        }
 
-            if is_dispatchable_task(TASKS[slot].id) {
-                count += 1;
-            }
+        if is_dispatchable_task(task.id) {
+            count += 1;
         }
     }
 
@@ -1178,17 +1059,14 @@ pub fn has_dispatchable_tasks() -> bool {
     count_dispatchable_tasks() > 0
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn find_first_task_by_state(state: TaskState) -> Option<usize> {
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if matches!(TASKS[slot].state, TaskState::Empty) {
-                continue;
-            }
+    for task in snapshot_tasks() {
+        if matches!(task.state, TaskState::Empty) {
+            continue;
+        }
 
-            if TASKS[slot].state == state {
-                return Some(TASKS[slot].id);
-            }
+        if task.state == state {
+            return Some(task.id);
         }
     }
 
@@ -1333,7 +1211,6 @@ pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn mark_task_finished(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;
@@ -1351,7 +1228,6 @@ pub fn mark_task_finished(id: usize) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn mark_task_ready_after_yield(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;
@@ -1371,7 +1247,6 @@ pub fn mark_task_ready_after_yield(id: usize) -> bool {
 }
 
 #[allow(dead_code)]
-#[allow(clippy::needless_range_loop)]
 pub fn mark_task_blocked_until(id: usize, wake_tick: u64) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;
@@ -1391,7 +1266,6 @@ pub fn mark_task_blocked_until(id: usize, wake_tick: u64) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn mark_task_blocked_for_sleep(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;
@@ -1409,40 +1283,49 @@ pub fn mark_task_blocked_for_sleep(id: usize) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
-    let mut woke = 0;
+    let mut due = [false; MAX_TASKS];
+    let mut tasks = snapshot_tasks();
 
-    unsafe {
-        for slot in 0..MAX_TASKS {
-            if !matches!(TASKS[slot].state, TaskState::Blocked) {
-                continue;
-            }
-
-            let Some(wake_tick) = TASKS[slot].sleep_until_tick else {
-                continue;
-            };
-
-            if current_tick >= wake_tick {
-                let task_id = TASKS[slot].id;
-                TASKS[slot].state = TaskState::Ready;
-                let can_resume = is_resume_frame_safe_for_task(task_id);
-                TASKS[slot].last_return_kind = if can_resume {
-                    TaskReturnKind::Sleep
-                } else {
-                    TaskReturnKind::None
-                };
-                TASKS[slot].can_resume = can_resume;
-                TASKS[slot].sleep_until_tick = None;
-                woke += 1;
-            }
+    for (slot, task) in tasks.iter_mut().enumerate() {
+        if !matches!(task.state, TaskState::Blocked) {
+            continue;
         }
+
+        let Some(wake_tick) = task.sleep_until_tick else {
+            continue;
+        };
+
+        if current_tick >= wake_tick {
+            task.state = TaskState::Ready;
+            task.sleep_until_tick = None;
+            due[slot] = true;
+        }
+    }
+
+    write_tasks(&tasks);
+
+    let mut woke = 0;
+    for (slot, is_due) in due.iter().enumerate() {
+        if !is_due {
+            continue;
+        }
+
+        let can_resume = is_resume_frame_safe_for_task(slot);
+        unsafe {
+            TASKS[slot].last_return_kind = if can_resume {
+                TaskReturnKind::Sleep
+            } else {
+                TaskReturnKind::None
+            };
+            TASKS[slot].can_resume = can_resume;
+        }
+        woke += 1;
     }
 
     woke
 }
 
-#[allow(clippy::needless_range_loop)]
 pub fn mark_task_faulted(id: usize) -> bool {
     let Some(slot) = find_slot_by_id(id) else {
         return false;

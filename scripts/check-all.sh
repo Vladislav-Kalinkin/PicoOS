@@ -29,7 +29,6 @@ CLIPPY_FLAGS=(
   -A clippy::multiple_crate_versions
   -A clippy::inline_always
   -A clippy::wildcard_imports
-  -A clippy::needless_range_loop
   -A clippy::too_many_lines
   -A clippy::missing_errors_doc
   -A clippy::missing_panics_doc
