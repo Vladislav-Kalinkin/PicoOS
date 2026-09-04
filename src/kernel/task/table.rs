@@ -229,6 +229,7 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
     };
 
     let Some(stack_top) = stack_start.checked_add(memory::PAGE_SIZE) else {
+        free_task_stack_page(stack_start);
         uart::write_str("invalid stack range for task: ");
         uart::write_line(name);
         return None;
@@ -237,6 +238,7 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
     let initial_pc = entry as *const () as usize as u64;
 
     let Some(prepared_sp) = context::prepare_initial_stack(stack_top, initial_pc) else {
+        free_task_stack_page(stack_start);
         uart::write_str("failed to prepare stack for task: ");
         uart::write_line(name);
         return None;
@@ -1278,4 +1280,43 @@ pub fn mark_task_faulted(id: usize) -> bool {
         true
     })
     .unwrap_or(false)
+}
+
+/// Reap a `Finished` or `Faulted` slot.
+///
+/// Frees the stack page and returns the slot to `Empty` so `id == slot` can be
+/// reused. Idle is not special-cased; callers that keep an idle task simply do
+/// not destroy it.
+pub fn destroy(id: usize) -> bool {
+    let Some(stack_start) = with_task_mut(id, |task| {
+        if !matches!(task.state, TaskState::Finished | TaskState::Faulted) {
+            return None;
+        }
+        let stack_start = task.stack_start;
+        let slot_id = task.id;
+        *task = Task::empty();
+        task.id = slot_id;
+        Some(stack_start)
+    })
+    .flatten() else {
+        return false;
+    };
+
+    LAST_RETURNED_TASK_ID.with(|last| {
+        if *last == Some(id) {
+            *last = None;
+        }
+    });
+
+    free_task_stack_page(stack_start);
+    true
+}
+
+fn free_task_stack_page(stack_start: u64) {
+    if stack_start == 0 {
+        return;
+    }
+    if let Some(page) = memory::PhysPage::new(stack_start) {
+        memory::free_pages(page, 1);
+    }
 }

@@ -60,6 +60,7 @@ pub fn run_memory_tests() {
     kernel::memory::print_memory_layout();
     kernel::memory::test_page_allocator();
     test_page_alloc_free_four();
+    test_reap_leak_check();
     kernel::memory::print_mm_stats();
 }
 
@@ -89,6 +90,62 @@ fn test_page_alloc_free_four() {
         uart::write_line("page alloc/free 4: OK");
     } else {
         uart::write_line("page alloc/free 4: FAILED used after free");
+    }
+}
+
+fn reap_probe_task() {
+    crate::arch::halt();
+}
+
+fn test_reap_leak_check() {
+    use crate::kernel::task::table::{create_task, destroy, mark_task_finished};
+
+    uart::write_line("");
+    uart::write_line("mm reap:");
+
+    crate::kernel::task::table::init();
+
+    let used_before = kernel::memory::stats().used;
+
+    let Some(id) = create_task("reap-a", reap_probe_task) else {
+        uart::write_line("mm leak check: FAILED create");
+        return;
+    };
+
+    if !mark_task_finished(id) {
+        uart::write_line("mm leak check: FAILED finish");
+        return;
+    }
+
+    if !destroy(id) {
+        uart::write_line("mm leak check: FAILED destroy");
+        return;
+    }
+
+    if kernel::memory::stats().used != used_before {
+        uart::write_line("mm leak check: FAILED used after reap");
+        return;
+    }
+
+    let Some(id2) = create_task("reap-b", reap_probe_task) else {
+        uart::write_line("mm leak check: FAILED recreate");
+        return;
+    };
+
+    let reused = id2 == id;
+    uart::write_str("reaped id reused: ");
+    kernel::task::table::print_yes_no(reused);
+    uart::write_line("");
+
+    if !mark_task_finished(id2) || !destroy(id2) {
+        uart::write_line("mm leak check: FAILED second reap");
+        return;
+    }
+
+    if reused && kernel::memory::stats().used == used_before {
+        uart::write_line("mm leak check: OK");
+    } else {
+        uart::write_line("mm leak check: FAILED");
     }
 }
 
