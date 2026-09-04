@@ -1,4 +1,5 @@
 use crate::drivers::uart;
+use crate::kernel::irq_cell::IrqCell;
 use crate::platform;
 
 pub const PAGE_SIZE: u64 = 4096;
@@ -23,8 +24,15 @@ unsafe extern "C" {
     static __free_memory_start: u8;
 }
 
-static mut NEXT_FREE_PAGE: u64 = 0;
-static mut MEMORY_END: u64 = 0;
+struct MmState {
+    next_free_page: u64,
+    memory_end: u64,
+}
+
+static MM: IrqCell<MmState> = IrqCell::new(MmState {
+    next_free_page: 0,
+    memory_end: 0,
+});
 
 #[inline(always)]
 fn symbol_addr(symbol: *const u8) -> u64 {
@@ -36,44 +44,43 @@ pub fn init() {
     let start = align_up(free_memory_start(), PAGE_SIZE);
 
     let (Some(start), Some(end)) = (start, end) else {
-        unsafe {
-            NEXT_FREE_PAGE = 0;
-            MEMORY_END = 0;
-        }
+        MM.with(|mm| {
+            mm.next_free_page = 0;
+            mm.memory_end = 0;
+        });
         return;
     };
 
-    unsafe {
-        NEXT_FREE_PAGE = if start <= end { start } else { 0 };
-        MEMORY_END = end;
-    }
+    MM.with(|mm| {
+        mm.next_free_page = if start <= end { start } else { 0 };
+        mm.memory_end = end;
+    });
 }
 
 pub fn allocate_page() -> Option<u64> {
-    unsafe {
-        if NEXT_FREE_PAGE == 0 || MEMORY_END == 0 {
+    MM.with(|mm| {
+        if mm.next_free_page == 0 || mm.memory_end == 0 {
             return None;
         }
 
-        let page = NEXT_FREE_PAGE;
+        let page = mm.next_free_page;
         let next = page.checked_add(PAGE_SIZE)?;
 
-        if next > MEMORY_END {
+        if next > mm.memory_end {
             return None;
         }
 
-        NEXT_FREE_PAGE = next;
-
+        mm.next_free_page = next;
         Some(page)
-    }
+    })
 }
 
 pub fn free_memory_current() -> u64 {
-    unsafe { NEXT_FREE_PAGE }
+    MM.with(|mm| mm.next_free_page)
 }
 
 pub fn memory_end() -> u64 {
-    unsafe { MEMORY_END }
+    MM.with(|mm| mm.memory_end)
 }
 
 pub fn kernel_start() -> u64 {

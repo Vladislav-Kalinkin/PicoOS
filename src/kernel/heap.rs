@@ -1,18 +1,27 @@
 use crate::drivers::uart;
+use crate::kernel::irq_cell::IrqCell;
 use crate::kernel::memory;
 
 const HEAP_PAGES: usize = 4;
 
-static mut HEAP_START: u64 = 0;
-static mut HEAP_END: u64 = 0;
-static mut HEAP_NEXT: u64 = 0;
+struct HeapState {
+    start: u64,
+    end: u64,
+    next: u64,
+}
+
+static HEAP: IrqCell<HeapState> = IrqCell::new(HeapState {
+    start: 0,
+    end: 0,
+    next: 0,
+});
 
 fn reset_heap_state() {
-    unsafe {
-        HEAP_START = 0;
-        HEAP_END = 0;
-        HEAP_NEXT = 0;
-    }
+    HEAP.with(|heap| {
+        heap.start = 0;
+        heap.end = 0;
+        heap.next = 0;
+    });
 }
 
 pub fn init() -> bool {
@@ -40,11 +49,11 @@ pub fn init() -> bool {
         return false;
     };
 
-    unsafe {
-        HEAP_START = start;
-        HEAP_END = end;
-        HEAP_NEXT = start;
-    }
+    HEAP.with(|heap| {
+        heap.start = start;
+        heap.end = end;
+        heap.next = start;
+    });
 
     true
 }
@@ -54,38 +63,37 @@ pub fn alloc(size: u64, align: u64) -> Option<u64> {
         return None;
     }
 
-    unsafe {
-        if HEAP_START == 0 || HEAP_END == 0 || HEAP_NEXT == 0 {
+    HEAP.with(|heap| {
+        if heap.start == 0 || heap.end == 0 || heap.next == 0 {
             return None;
         }
 
-        let start = align_up(HEAP_NEXT, align)?;
+        let start = align_up(heap.next, align)?;
         let end = start.checked_add(size)?;
 
-        if end > HEAP_END {
+        if end > heap.end {
             return None;
         }
 
-        HEAP_NEXT = end;
-
+        heap.next = end;
         Some(start)
-    }
+    })
 }
 
 pub fn heap_start() -> u64 {
-    unsafe { HEAP_START }
+    HEAP.with(|heap| heap.start)
 }
 
 pub fn heap_end() -> u64 {
-    unsafe { HEAP_END }
+    HEAP.with(|heap| heap.end)
 }
 
 pub fn heap_next() -> u64 {
-    unsafe { HEAP_NEXT }
+    HEAP.with(|heap| heap.next)
 }
 
 pub fn heap_size() -> u64 {
-    unsafe { HEAP_END.saturating_sub(HEAP_START) }
+    HEAP.with(|heap| heap.end.saturating_sub(heap.start))
 }
 
 pub fn test_heap() {

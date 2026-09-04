@@ -1,4 +1,5 @@
 use crate::drivers::uart;
+use crate::kernel::irq_cell::IrqCell;
 use crate::kernel::memory;
 use crate::kernel::task::context;
 use crate::kernel::task::cpu_context::{self, TaskCpuContext};
@@ -11,7 +12,7 @@ pub const fn max_tasks() -> usize {
 }
 
 pub const TASK_NAME_LEN: usize = 16;
-static mut LAST_RETURNED_TASK_ID: Option<usize> = None;
+static LAST_RETURNED_TASK_ID: IrqCell<Option<usize>> = IrqCell::new(None);
 
 pub type TaskEntry = fn();
 
@@ -151,31 +152,55 @@ impl Task {
     }
 }
 
-static mut TASKS: [Task; MAX_TASKS] = [Task::empty(); MAX_TASKS];
+static TASKS: IrqCell<[Task; MAX_TASKS]> = IrqCell::new([Task::empty(); MAX_TASKS]);
 
 fn snapshot_tasks() -> [Task; MAX_TASKS] {
-    unsafe { core::ptr::read(core::ptr::addr_of!(TASKS)) }
+    TASKS.with(|tasks| *tasks)
 }
 
 fn write_tasks(tasks: &[Task; MAX_TASKS]) {
-    unsafe {
-        core::ptr::write(core::ptr::addr_of_mut!(TASKS), *tasks);
-    }
+    TASKS.with(|slot| *slot = *tasks);
 }
 
 /// Occupied slot for `id`. Task ids are slot indices: `id == slot`.
 fn find_slot_by_id(id: usize) -> Option<usize> {
-    if id >= MAX_TASKS {
-        return None;
-    }
+    TASKS.with(|tasks| {
+        if id >= MAX_TASKS {
+            return None;
+        }
 
-    unsafe {
-        if !matches!(TASKS[id].state, TaskState::Empty) && TASKS[id].id == id {
+        if !matches!(tasks[id].state, TaskState::Empty) && tasks[id].id == id {
             Some(id)
         } else {
             None
         }
-    }
+    })
+}
+
+fn with_task<R>(id: usize, f: impl FnOnce(&Task) -> R) -> Option<R> {
+    TASKS.with(|tasks| {
+        if id >= MAX_TASKS {
+            return None;
+        }
+        if !matches!(tasks[id].state, TaskState::Empty) && tasks[id].id == id {
+            Some(f(&tasks[id]))
+        } else {
+            None
+        }
+    })
+}
+
+fn with_task_mut<R>(id: usize, f: impl FnOnce(&mut Task) -> R) -> Option<R> {
+    TASKS.with(|tasks| {
+        if id >= MAX_TASKS {
+            return None;
+        }
+        if !matches!(tasks[id].state, TaskState::Empty) && tasks[id].id == id {
+            Some(f(&mut tasks[id]))
+        } else {
+            None
+        }
+    })
 }
 
 pub fn init() {
@@ -197,78 +222,80 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
         .iter()
         .position(|task| matches!(task.state, TaskState::Empty))?;
 
-    unsafe {
-        let Some(stack_start) = memory::allocate_page() else {
-            uart::write_str("failed to allocate stack for task: ");
-            uart::write_line(name);
-            return None;
-        };
+    let Some(stack_start) = memory::allocate_page() else {
+        uart::write_str("failed to allocate stack for task: ");
+        uart::write_line(name);
+        return None;
+    };
 
-        let Some(stack_top) = stack_start.checked_add(memory::PAGE_SIZE) else {
-            uart::write_str("invalid stack range for task: ");
-            uart::write_line(name);
-            return None;
-        };
-        let initial_sp = stack_top;
-        let initial_pc = entry as *const () as usize as u64;
+    let Some(stack_top) = stack_start.checked_add(memory::PAGE_SIZE) else {
+        uart::write_str("invalid stack range for task: ");
+        uart::write_line(name);
+        return None;
+    };
+    let initial_sp = stack_top;
+    let initial_pc = entry as *const () as usize as u64;
 
-        let Some(prepared_sp) = context::prepare_initial_stack(stack_top, initial_pc) else {
-            uart::write_str("failed to prepare stack for task: ");
-            uart::write_line(name);
-            return None;
-        };
+    let Some(prepared_sp) = context::prepare_initial_stack(stack_top, initial_pc) else {
+        uart::write_str("failed to prepare stack for task: ");
+        uart::write_line(name);
+        return None;
+    };
 
-        let saved_sp = prepared_sp;
-        let saved_pc = initial_pc;
-        let id = slot;
+    let saved_sp = prepared_sp;
+    let saved_pc = initial_pc;
+    let id = slot;
+    let mut printed_name = [0u8; TASK_NAME_LEN];
 
-        TASKS[slot].id = id;
-        TASKS[slot].state = TaskState::Ready;
-        TASKS[slot].stack_start = stack_start;
-        TASKS[slot].stack_top = stack_top;
-        TASKS[slot].entry = Some(entry);
-        TASKS[slot].initial_sp = initial_sp;
-        TASKS[slot].initial_pc = initial_pc;
-        TASKS[slot].saved_sp = saved_sp;
-        TASKS[slot].saved_pc = saved_pc;
-        TASKS[slot].cpu_context = TaskCpuContext::initial(saved_sp, saved_pc);
-        TASKS[slot].last_kernel_sp = 0;
-        TASKS[slot].last_kernel_return_pc = 0;
-        TASKS[slot].last_task_sp = 0;
-        TASKS[slot].has_started = false;
-        TASKS[slot].can_resume = false;
-        TASKS[slot].last_return_kind = TaskReturnKind::None;
-        TASKS[slot].sleep_until_tick = None;
+    TASKS.with(|tasks| {
+        let task = &mut tasks[slot];
+        task.id = id;
+        task.state = TaskState::Ready;
+        task.stack_start = stack_start;
+        task.stack_top = stack_top;
+        task.entry = Some(entry);
+        task.initial_sp = initial_sp;
+        task.initial_pc = initial_pc;
+        task.saved_sp = saved_sp;
+        task.saved_pc = saved_pc;
+        task.cpu_context = TaskCpuContext::initial(saved_sp, saved_pc);
+        task.last_kernel_sp = 0;
+        task.last_kernel_return_pc = 0;
+        task.last_task_sp = 0;
+        task.has_started = false;
+        task.can_resume = false;
+        task.last_return_kind = TaskReturnKind::None;
+        task.sleep_until_tick = None;
+        copy_name(&mut task.name, name);
+        printed_name = task.name;
+    });
 
-        copy_name(&mut TASKS[slot].name, name);
+    uart::write_str("created task: ");
+    write_name(&printed_name);
 
-        uart::write_str("created task: ");
-        write_name(&TASKS[slot].name);
+    uart::write_str(" stack: ");
+    uart::write_hex_u64(stack_start);
 
-        uart::write_str(" stack: ");
-        uart::write_hex_u64(stack_start);
+    uart::write_str(" - ");
+    uart::write_hex_u64(stack_top);
 
-        uart::write_str(" - ");
-        uart::write_hex_u64(stack_top);
+    uart::write_str(" entry: ");
+    uart::write_hex_u64(initial_pc);
 
-        uart::write_str(" entry: ");
-        uart::write_hex_u64(initial_pc);
+    uart::write_str(" initial_sp: ");
+    uart::write_hex_u64(initial_sp);
 
-        uart::write_str(" initial_sp: ");
-        uart::write_hex_u64(initial_sp);
+    uart::write_str(" initial_pc: ");
+    uart::write_hex_u64(initial_pc);
 
-        uart::write_str(" initial_pc: ");
-        uart::write_hex_u64(initial_pc);
+    uart::write_str(" prepared_sp: ");
+    uart::write_hex_u64(prepared_sp);
 
-        uart::write_str(" prepared_sp: ");
-        uart::write_hex_u64(prepared_sp);
+    context::print_initial_context(prepared_sp);
 
-        context::print_initial_context(prepared_sp);
+    uart::write_line("");
 
-        uart::write_line("");
-
-        Some(id)
-    }
+    Some(id)
 }
 
 pub fn print_tasks() {
@@ -350,45 +377,37 @@ pub fn print_tasks() {
 }
 
 pub fn get_task_name(id: usize) -> Option<[u8; TASK_NAME_LEN]> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].name })
+    with_task(id, |task| task.name)
 }
 
 pub fn get_task_entry(id: usize) -> Option<TaskEntry> {
-    let slot = find_slot_by_id(id)?;
-    unsafe { TASKS[slot].entry }
+    with_task(id, |task| task.entry)?
 }
 
 #[allow(dead_code)]
 pub fn get_task_stack_start(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].stack_start })
+    with_task(id, |task| task.stack_start)
 }
 
 #[allow(dead_code)]
 pub fn get_task_stack_top(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].stack_top })
+    with_task(id, |task| task.stack_top)
 }
 
 pub fn get_task_initial_sp(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].initial_sp })
+    with_task(id, |task| task.initial_sp)
 }
 
 pub fn get_task_initial_pc(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].initial_pc })
+    with_task(id, |task| task.initial_pc)
 }
 
 pub fn get_task_saved_sp(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].saved_sp })
+    with_task(id, |task| task.saved_sp)
 }
 
 pub fn get_task_saved_pc(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].saved_pc })
+    with_task(id, |task| task.saved_pc)
 }
 
 pub fn find_next_ready_after(current_id: Option<usize>) -> Option<usize> {
@@ -446,39 +465,27 @@ pub fn can_apply_task_transition(id: usize, transition: TaskLifecycleTransition)
 
 #[allow(dead_code)]
 pub fn mark_task_started(id: usize) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Start) {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Start) {
             return false;
         }
-        TASKS[slot].has_started = true;
-    }
-
-    true
+        task.has_started = true;
+        true
+    })
+    .unwrap_or(false)
 }
 
 pub fn update_context(id: usize, saved_sp: u64, saved_pc: u64) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].saved_sp = saved_sp;
-        TASKS[slot].saved_pc = saved_pc;
-        TASKS[slot].has_started = true;
-    }
-
-    true
+    with_task_mut(id, |task| {
+        task.saved_sp = saved_sp;
+        task.saved_pc = saved_pc;
+        task.has_started = true;
+    })
+    .is_some()
 }
 
 pub fn has_started(id: usize) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-    unsafe { TASKS[slot].has_started }
+    with_task(id, |task| task.has_started).unwrap_or(false)
 }
 
 pub fn print_task_name_by_id(id: usize) {
@@ -559,12 +566,10 @@ pub fn print_task_full_context_by_id(id: usize) {
 
 #[allow(dead_code)]
 pub fn print_task_fault_info_by_id(id: usize) {
-    let Some(slot) = find_slot_by_id(id) else {
+    let Some(task) = with_task(id, |task| *task) else {
         uart::write_line("  fault info: task not found");
         return;
     };
-
-    let task = unsafe { TASKS[slot] };
 
     uart::write_line("  fault info:");
 
@@ -650,8 +655,7 @@ fn print_state(state: TaskState) {
 }
 
 pub fn get_task_state(id: usize) -> Option<TaskState> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].state })
+    with_task(id, |task| task.state)
 }
 
 pub fn print_task_state_by_id(id: usize) {
@@ -662,20 +666,11 @@ pub fn print_task_state_by_id(id: usize) {
 }
 
 pub fn set_task_return_kind(id: usize, kind: TaskReturnKind) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].last_return_kind = kind;
-    }
-
-    true
+    with_task_mut(id, |task| task.last_return_kind = kind).is_some()
 }
 
 pub fn get_task_return_kind(id: usize) -> Option<TaskReturnKind> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].last_return_kind })
+    with_task(id, |task| task.last_return_kind)
 }
 
 pub fn print_task_return_kind(kind: TaskReturnKind) {
@@ -701,17 +696,12 @@ pub fn set_task_last_return_context(
     kernel_sp: u64,
     kernel_return_pc: u64,
 ) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].last_task_sp = task_sp;
-        TASKS[slot].last_kernel_sp = kernel_sp;
-        TASKS[slot].last_kernel_return_pc = kernel_return_pc;
-    }
-
-    true
+    with_task_mut(id, |task| {
+        task.last_task_sp = task_sp;
+        task.last_kernel_sp = kernel_sp;
+        task.last_kernel_return_pc = kernel_return_pc;
+    })
+    .is_some()
 }
 
 pub fn apply_task_return_transition(
@@ -752,41 +742,28 @@ pub fn apply_task_return_transition(
 }
 
 pub fn is_sp_inside_task_stack(id: usize, sp: u64) -> Option<bool> {
-    let slot = find_slot_by_id(id)?;
-    unsafe { Some(sp >= TASKS[slot].stack_start && sp < TASKS[slot].stack_top) }
+    with_task(id, |task| sp >= task.stack_start && sp < task.stack_top)
 }
 
 pub fn set_task_can_resume(id: usize, can_resume: bool) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].can_resume = can_resume;
-    }
-
-    true
+    with_task_mut(id, |task| task.can_resume = can_resume).is_some()
 }
 
 pub fn can_task_resume(id: usize) -> Option<bool> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].can_resume })
+    with_task(id, |task| task.can_resume)
 }
 
 pub fn get_task_last_task_sp(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].last_task_sp })
+    with_task(id, |task| task.last_task_sp)
 }
 
 #[allow(dead_code)]
 pub fn get_task_last_kernel_sp(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].last_kernel_sp })
+    with_task(id, |task| task.last_kernel_sp)
 }
 
 pub fn get_task_last_kernel_return_pc(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].last_kernel_return_pc })
+    with_task(id, |task| task.last_kernel_return_pc)
 }
 
 #[allow(dead_code)]
@@ -809,22 +786,16 @@ pub fn print_yes_no(value: bool) {
 }
 
 pub fn set_task_cpu_context(id: usize, context: TaskCpuContext) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].cpu_context = context;
-        TASKS[slot].saved_sp = context.sp;
-        TASKS[slot].saved_pc = context.return_pc;
-    }
-
-    true
+    with_task_mut(id, |task| {
+        task.cpu_context = context;
+        task.saved_sp = context.sp;
+        task.saved_pc = context.return_pc;
+    })
+    .is_some()
 }
 
 pub fn get_task_cpu_context(id: usize) -> Option<TaskCpuContext> {
-    let slot = find_slot_by_id(id)?;
-    Some(unsafe { TASKS[slot].cpu_context })
+    with_task(id, |task| task.cpu_context)
 }
 
 pub fn get_task_resume_frame(
@@ -834,14 +805,12 @@ pub fn get_task_resume_frame(
 }
 
 pub fn set_last_returned_task_id(id: usize) {
-    unsafe {
-        LAST_RETURNED_TASK_ID = Some(id);
-    }
+    LAST_RETURNED_TASK_ID.with(|last| *last = Some(id));
 }
 
 #[allow(dead_code)]
 pub fn get_last_returned_task_id() -> Option<usize> {
-    unsafe { LAST_RETURNED_TASK_ID }
+    LAST_RETURNED_TASK_ID.with(|last| *last)
 }
 
 pub fn is_task_ready(id: usize) -> bool {
@@ -945,18 +914,13 @@ pub fn set_task_fault_info(
     mepc: u64,
     mtval: u64,
 ) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        TASKS[slot].last_fault_reason = Some(reason);
-        TASKS[slot].last_fault_mcause = Some(mcause);
-        TASKS[slot].last_fault_mepc = Some(mepc);
-        TASKS[slot].last_fault_mtval = Some(mtval);
-    }
-
-    true
+    with_task_mut(id, |task| {
+        task.last_fault_reason = Some(reason);
+        task.last_fault_mcause = Some(mcause);
+        task.last_fault_mepc = Some(mepc);
+        task.last_fault_mtval = Some(mtval);
+    })
+    .is_some()
 }
 
 #[allow(dead_code)]
@@ -972,26 +936,22 @@ pub fn record_task_fault(id: usize, mcause: u64, mepc: u64, mtval: u64) -> Optio
 
 #[allow(dead_code)]
 pub fn get_task_fault_reason(id: usize) -> Option<TaskFaultReason> {
-    let slot = find_slot_by_id(id)?;
-    unsafe { TASKS[slot].last_fault_reason }
+    with_task(id, |task| task.last_fault_reason)?
 }
 
 #[allow(dead_code)]
 pub fn get_task_fault_mcause(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    unsafe { TASKS[slot].last_fault_mcause }
+    with_task(id, |task| task.last_fault_mcause)?
 }
 
 #[allow(dead_code)]
 pub fn get_task_fault_mepc(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    unsafe { TASKS[slot].last_fault_mepc }
+    with_task(id, |task| task.last_fault_mepc)?
 }
 
 #[allow(dead_code)]
 pub fn get_task_fault_mtval(id: usize) -> Option<u64> {
-    let slot = find_slot_by_id(id)?;
-    unsafe { TASKS[slot].last_fault_mtval }
+    with_task(id, |task| task.last_fault_mtval)?
 }
 
 #[allow(dead_code)]
@@ -1012,16 +972,13 @@ pub fn print_task_fault_reason(reason: TaskFaultReason) {
 
 #[cfg(feature = "scheduler_dispatch_test")]
 pub fn get_task_id_at_slot(slot: usize) -> Option<usize> {
-    if slot >= MAX_TASKS {
-        return None;
-    }
-    unsafe {
-        if matches!(TASKS[slot].state, TaskState::Empty) {
+    snapshot_tasks().get(slot).and_then(|task| {
+        if matches!(task.state, TaskState::Empty) {
             None
         } else {
-            Some(TASKS[slot].id)
+            Some(task.id)
         }
-    }
+    })
 }
 
 #[allow(dead_code)]
@@ -1212,75 +1169,59 @@ pub fn get_task_fault_completion_snapshot() -> TaskFaultCompletionSnapshot {
 }
 
 pub fn mark_task_finished(id: usize) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Exit) {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Exit) {
             return false;
         }
-        TASKS[slot].state = TaskState::Finished;
-        TASKS[slot].last_return_kind = TaskReturnKind::Exit;
-        TASKS[slot].can_resume = false;
-    }
-
-    true
+        task.state = TaskState::Finished;
+        task.last_return_kind = TaskReturnKind::Exit;
+        task.can_resume = false;
+        true
+    })
+    .unwrap_or(false)
 }
 
 pub fn mark_task_ready_after_yield(id: usize) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Yield) {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Yield) {
             return false;
         }
-        TASKS[slot].state = TaskState::Ready;
-        TASKS[slot].last_return_kind = TaskReturnKind::Yield;
-        TASKS[slot].can_resume = true;
-        TASKS[slot].sleep_until_tick = None;
-    }
-
-    true
+        task.state = TaskState::Ready;
+        task.last_return_kind = TaskReturnKind::Yield;
+        task.can_resume = true;
+        task.sleep_until_tick = None;
+        true
+    })
+    .unwrap_or(false)
 }
 
 #[allow(dead_code)]
 pub fn mark_task_blocked_until(id: usize, wake_tick: u64) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Sleep) {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Sleep) {
             return false;
         }
 
-        TASKS[slot].state = TaskState::Blocked;
-        TASKS[slot].last_return_kind = TaskReturnKind::Sleep;
-        TASKS[slot].can_resume = false;
-        TASKS[slot].sleep_until_tick = Some(wake_tick);
-    }
-
-    true
+        task.state = TaskState::Blocked;
+        task.last_return_kind = TaskReturnKind::Sleep;
+        task.can_resume = false;
+        task.sleep_until_tick = Some(wake_tick);
+        true
+    })
+    .unwrap_or(false)
 }
 
 pub fn mark_task_blocked_for_sleep(id: usize) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        if !matches!(TASKS[slot].state, TaskState::Blocked) {
+    with_task_mut(id, |task| {
+        if !matches!(task.state, TaskState::Blocked) {
             return false;
         }
 
-        TASKS[slot].last_return_kind = TaskReturnKind::Sleep;
-        TASKS[slot].can_resume = false;
-    }
-
-    true
+        task.last_return_kind = TaskReturnKind::Sleep;
+        task.can_resume = false;
+        true
+    })
+    .unwrap_or(false)
 }
 
 pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
@@ -1312,14 +1253,14 @@ pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
         }
 
         let can_resume = is_resume_frame_safe_for_task(slot);
-        unsafe {
-            TASKS[slot].last_return_kind = if can_resume {
+        with_task_mut(slot, |task| {
+            task.last_return_kind = if can_resume {
                 TaskReturnKind::Sleep
             } else {
                 TaskReturnKind::None
             };
-            TASKS[slot].can_resume = can_resume;
-        }
+            task.can_resume = can_resume;
+        });
         woke += 1;
     }
 
@@ -1327,18 +1268,14 @@ pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
 }
 
 pub fn mark_task_faulted(id: usize) -> bool {
-    let Some(slot) = find_slot_by_id(id) else {
-        return false;
-    };
-
-    unsafe {
-        if !can_transition_from(TASKS[slot].state, TaskLifecycleTransition::Fault) {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Fault) {
             return false;
         }
-        TASKS[slot].state = TaskState::Faulted;
-        TASKS[slot].last_return_kind = TaskReturnKind::Fault;
-        TASKS[slot].can_resume = false;
-    }
-
-    true
+        task.state = TaskState::Faulted;
+        task.last_return_kind = TaskReturnKind::Fault;
+        task.can_resume = false;
+        true
+    })
+    .unwrap_or(false)
 }

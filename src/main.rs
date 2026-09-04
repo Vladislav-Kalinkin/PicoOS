@@ -116,7 +116,8 @@ pub extern "C" fn kernel_main() -> ! {
     }
 }
 
-static mut PANICKING: bool = false;
+static PANICKING: crate::kernel::irq_cell::IrqCell<bool> =
+    crate::kernel::irq_cell::IrqCell::new(false);
 
 struct UartFmtWrite;
 
@@ -129,11 +130,13 @@ impl core::fmt::Write for UartFmtWrite {
 
 #[panic_handler]
 fn panic(info: &PanicInfo<'_>) -> ! {
-    unsafe {
-        if PANICKING {
-            arch::halt();
-        }
-        PANICKING = true;
+    let already = PANICKING.with(|flag| {
+        let already = *flag;
+        *flag = true;
+        already
+    });
+    if already {
+        arch::halt();
     }
 
     arch::disable_irq();

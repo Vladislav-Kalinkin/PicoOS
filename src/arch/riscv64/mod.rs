@@ -5,6 +5,8 @@ pub mod restore;
 pub mod timer;
 pub mod traps;
 
+pub use cpu::without_interrupts;
+
 #[path = "yield.rs"]
 mod task_yield;
 

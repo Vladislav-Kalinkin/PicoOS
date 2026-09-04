@@ -26,18 +26,17 @@ pub fn handoff_worker_b() {
 }
 
 #[cfg(feature = "two_task_resume_handoff_test")]
-static mut TWO_TASK_HANDOFF_PHASE: usize = 0;
+static TWO_TASK_HANDOFF_PHASE: crate::kernel::irq_cell::IrqCell<usize> =
+    crate::kernel::irq_cell::IrqCell::new(0);
 
 #[cfg(feature = "two_task_resume_handoff_test")]
 pub fn get_two_task_handoff_phase() -> usize {
-    unsafe { TWO_TASK_HANDOFF_PHASE }
+    TWO_TASK_HANDOFF_PHASE.with(|phase| *phase)
 }
 
 #[cfg(feature = "two_task_resume_handoff_test")]
 pub fn advance_two_task_handoff_phase() {
-    unsafe {
-        TWO_TASK_HANDOFF_PHASE += 1;
-    }
+    TWO_TASK_HANDOFF_PHASE.with(|phase| *phase += 1);
 }
 
 #[cfg(feature = "two_task_resume_handoff_test")]

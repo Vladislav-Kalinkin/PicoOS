@@ -1,15 +1,15 @@
 use crate::drivers::uart;
+use crate::kernel::irq_cell::IrqCell;
 #[cfg(feature = "scheduler_dispatch_test")]
 use crate::kernel::task::cpu_context::TaskCpuContext;
 use crate::kernel::task::table as task;
 #[cfg(feature = "scheduler_reentry_test")]
 use crate::kernel::task::table::TaskReturnSnapshot;
-static mut CURRENT_TASK_ID: Option<usize> = None;
+
+static CURRENT_TASK_ID: IrqCell<Option<usize>> = IrqCell::new(None);
 
 pub fn init() {
-    unsafe {
-        CURRENT_TASK_ID = None;
-    }
+    CURRENT_TASK_ID.with(|current| *current = None);
 
     uart::write_line("");
     uart::write_line("scheduler:");
@@ -32,16 +32,14 @@ pub fn init() {
 }
 
 pub fn schedule_next() -> Option<usize> {
-    let current = unsafe { CURRENT_TASK_ID };
+    let current = CURRENT_TASK_ID.with(|id| *id);
     let next = task::find_next_ready_after(current)?;
 
     if !task::mark_task_running(next) {
         return None;
     }
 
-    unsafe {
-        CURRENT_TASK_ID = Some(next);
-    }
+    CURRENT_TASK_ID.with(|id| *id = Some(next));
 
     Some(next)
 }
@@ -61,7 +59,7 @@ pub fn decide_next_resumable_task_dry_run() -> Option<usize> {
 }
 
 pub fn current_task_id() -> Option<usize> {
-    unsafe { CURRENT_TASK_ID }
+    CURRENT_TASK_ID.with(|id| *id)
 }
 
 pub fn print_current_task_name() {
@@ -99,9 +97,7 @@ pub fn force_current_task(id: usize) {
 }
 
 fn set_round_robin_cursor(id: usize) {
-    unsafe {
-        CURRENT_TASK_ID = Some(id);
-    }
+    CURRENT_TASK_ID.with(|current| *current = Some(id));
 }
 
 pub fn switch_to_idle() {

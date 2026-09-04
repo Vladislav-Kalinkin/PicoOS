@@ -1,3 +1,4 @@
+use crate::kernel::irq_cell::IrqCell;
 use crate::kernel::task::table::TaskReturnKind;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -36,36 +37,30 @@ impl Cpu {
     }
 }
 
-static mut CPU: Cpu = Cpu::new();
+static CPU: IrqCell<Cpu> = IrqCell::new(Cpu::new());
 
 pub fn current() -> Option<usize> {
-    unsafe { CPU.current }
+    CPU.with(|cpu| cpu.current)
 }
 
 #[allow(dead_code)]
 pub fn set_current(id: usize) {
-    unsafe {
-        CPU.current = Some(id);
-    }
+    CPU.with(|cpu| cpu.current = Some(id));
 }
 
 #[allow(dead_code)]
 pub fn clear_current() {
-    unsafe {
-        CPU.current = None;
-    }
+    CPU.with(|cpu| cpu.current = None);
 }
 
 #[allow(dead_code)]
 pub fn in_trap() -> bool {
-    unsafe { CPU.in_trap }
+    CPU.with(|cpu| cpu.in_trap)
 }
 
 #[allow(dead_code)]
 pub fn set_in_trap(value: bool) {
-    unsafe {
-        CPU.in_trap = value;
-    }
+    CPU.with(|cpu| cpu.in_trap = value);
 }
 
 pub fn trap_execution_context() -> TrapExecutionContext {
@@ -89,82 +84,70 @@ pub fn print_trap_execution_context() {
 }
 
 pub fn kernel_return_pc() -> u64 {
-    unsafe { CPU.kernel_return_pc }
+    CPU.with(|cpu| cpu.kernel_return_pc)
 }
 
 #[allow(dead_code)]
 pub fn set_kernel_return_pc(pc: u64) {
-    unsafe {
-        CPU.kernel_return_pc = pc;
-    }
+    CPU.with(|cpu| cpu.kernel_return_pc = pc);
 }
 
 pub fn kernel_sp_before_task() -> u64 {
-    unsafe { CPU.kernel_sp_before_task }
+    CPU.with(|cpu| cpu.kernel_sp_before_task)
 }
 
 #[allow(dead_code)]
 pub fn set_kernel_sp_before_task(sp: u64) {
-    unsafe {
-        CPU.kernel_sp_before_task = sp;
-    }
+    CPU.with(|cpu| cpu.kernel_sp_before_task = sp);
 }
 
 pub fn current_stack_start() -> u64 {
-    unsafe { CPU.current_stack_start }
+    CPU.with(|cpu| cpu.current_stack_start)
 }
 
 pub fn current_stack_top() -> u64 {
-    unsafe { CPU.current_stack_top }
+    CPU.with(|cpu| cpu.current_stack_top)
 }
 
 #[allow(dead_code)]
 pub fn set_current_stack_bounds(start: u64, top: u64) {
-    unsafe {
-        CPU.current_stack_start = start;
-        CPU.current_stack_top = top;
-    }
+    CPU.with(|cpu| {
+        cpu.current_stack_start = start;
+        cpu.current_stack_top = top;
+    });
 }
 
 pub fn last_task_sp() -> u64 {
-    unsafe { CPU.last_task_sp }
+    CPU.with(|cpu| cpu.last_task_sp)
 }
 
 pub fn set_last_task_sp(sp: u64) {
-    unsafe {
-        CPU.last_task_sp = sp;
-    }
+    CPU.with(|cpu| cpu.last_task_sp = sp);
 }
 
 pub fn task_run_stage() -> u64 {
-    unsafe { CPU.task_run_stage }
+    CPU.with(|cpu| cpu.task_run_stage)
 }
 
 #[allow(dead_code)]
 pub fn set_task_run_stage(stage: u64) {
-    unsafe {
-        CPU.task_run_stage = stage;
-    }
+    CPU.with(|cpu| cpu.task_run_stage = stage);
 }
 
 pub fn task_return_kind() -> TaskReturnKind {
-    unsafe { CPU.task_return_kind }
+    CPU.with(|cpu| cpu.task_return_kind)
 }
 
 pub fn set_task_return_kind(kind: TaskReturnKind) {
-    unsafe {
-        CPU.task_return_kind = kind;
-    }
+    CPU.with(|cpu| cpu.task_return_kind = kind);
 }
 
 pub fn task_resume_pc() -> u64 {
-    unsafe { CPU.task_resume_pc }
+    CPU.with(|cpu| cpu.task_resume_pc)
 }
 
 pub fn set_task_resume_pc(pc: u64) {
-    unsafe {
-        CPU.task_resume_pc = pc;
-    }
+    CPU.with(|cpu| cpu.task_resume_pc = pc);
 }
 
 pub fn set_task_resume_context(task_sp: u64, resume_pc: u64) {

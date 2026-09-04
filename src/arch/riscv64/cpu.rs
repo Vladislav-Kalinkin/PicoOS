@@ -1,5 +1,20 @@
 use core::arch::asm;
 
+const MSTATUS_MIE: u64 = 1 << 3;
+
+/// Run `f` with `mstatus.MIE` clear. Restores the previous MIE bit (does not
+/// force MIE=1). Nestable: an inner call that starts with MIE already clear
+/// leaves it clear.
+pub fn without_interrupts<T>(f: impl FnOnce() -> T) -> T {
+    let saved = mstatus();
+    disable_machine_interrupts();
+    let result = f();
+    if saved & MSTATUS_MIE != 0 {
+        enable_machine_interrupts();
+    }
+    result
+}
+
 #[inline(always)]
 pub fn mhartid() -> u64 {
     let value: u64;
