@@ -116,10 +116,44 @@ pub extern "C" fn kernel_main() -> ! {
     }
 }
 
+static mut PANICKING: bool = false;
+
+struct UartFmtWrite;
+
+impl core::fmt::Write for UartFmtWrite {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        uart::write_str(s);
+        Ok(())
+    }
+}
+
 #[panic_handler]
-fn panic(_info: &PanicInfo<'_>) -> ! {
+fn panic(info: &PanicInfo<'_>) -> ! {
+    unsafe {
+        if PANICKING {
+            arch::halt();
+        }
+        PANICKING = true;
+    }
+
+    arch::disable_irq();
+
     uart::write_line("");
     uart::write_line("KERNEL PANIC");
+
+    if let Some(location) = info.location() {
+        uart::write_str("file: ");
+        uart::write_str(location.file());
+        uart::write_str(":");
+        uart::write_dec_u64(u64::from(location.line()));
+        uart::write_str(":");
+        uart::write_dec_u64(u64::from(location.column()));
+        uart::write_line("");
+    }
+
+    uart::write_str("message: ");
+    let _ = core::fmt::Write::write_fmt(&mut UartFmtWrite, format_args!("{}", info.message()));
+    uart::write_line("");
 
     arch::halt();
 }
