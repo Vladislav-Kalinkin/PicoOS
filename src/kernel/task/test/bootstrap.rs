@@ -104,7 +104,7 @@ pub fn test_task_sleep_wakeup_table_selftest() {
         None => uart::write_line("none"),
     }
 
-    if started
+    let no_image_ok = started
         && blocked
         && woke_early == 0
         && state_still_blocked
@@ -113,11 +113,99 @@ pub fn test_task_sleep_wakeup_table_selftest() {
         && state_ready
         && !can_resume_after_wake
         && return_kind_none
-        && resumable_after_wake.is_none()
+        && resumable_after_wake.is_none();
+
+    if !no_image_ok {
+        uart::write_line("task sleep wake result: FAILED");
+        crate::arch::halt();
+    }
+
+    uart::write_line("task sleep wake no-image: OK");
+    test_task_sleep_wakeup_with_saved_image();
+}
+
+#[cfg(feature = "task_sleep_test")]
+fn sleep_image_probe() {
+    crate::arch::halt();
+}
+
+/// Wake must set `can_resume` from the saved image, not unconditionally.
+#[cfg(feature = "task_sleep_test")]
+fn test_task_sleep_wakeup_with_saved_image() {
+    uart::write_line("task sleep table selftest (saved image):");
+
+    let Some(task_id) = crate::kernel::task::table::create_task("sleep-img", sleep_image_probe)
+    else {
+        uart::write_line("task sleep wake image result: FAILED");
+        crate::arch::halt();
+    };
+
+    let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) else {
+        uart::write_line("task sleep wake image result: FAILED");
+        crate::arch::halt();
+    };
+    let Some(stack_top) = crate::kernel::task::table::get_task_stack_top(task_id) else {
+        uart::write_line("task sleep wake image result: FAILED");
+        crate::arch::halt();
+    };
+
+    let started = crate::kernel::task::table::mark_task_started(task_id);
+    let sp = stack_top.saturating_sub(16);
+    let pc = sleep_image_probe as *const () as u64;
+
+    let image = crate::kernel::task::cpu_context::TaskCpuContext {
+        sp,
+        return_pc: pc,
+        resume_pc: pc,
+        ra: pc,
+        s: [0; 12],
+    };
+
+    let injected = sp >= stack_start
+        && sp < stack_top
+        && crate::kernel::task::table::set_task_cpu_context(task_id, image)
+        && crate::kernel::task::table::set_task_last_return_context(task_id, sp, 0, pc);
+
+    uart::write_str("  injected resume image: ");
+    crate::kernel::task::table::print_yes_no(started && injected);
+    uart::write_line("");
+
+    let blocked = crate::kernel::task::table::mark_task_blocked_until(task_id, 10);
+    let woke_early = crate::kernel::task::table::wake_sleeping_tasks(9);
+    let woke_on_time = crate::kernel::task::table::wake_sleeping_tasks(10);
+
+    let can_resume_after_wake = matches!(
+        crate::kernel::task::table::can_task_resume(task_id),
+        Some(true)
+    );
+    uart::write_str("  can resume after wake with image: ");
+    crate::kernel::task::table::print_yes_no(can_resume_after_wake);
+    uart::write_line("");
+
+    let return_kind_sleep = matches!(
+        crate::kernel::task::table::get_task_return_kind(task_id),
+        Some(crate::kernel::task::table::TaskReturnKind::Sleep)
+    );
+    uart::write_str("  last return is Sleep after wake with image: ");
+    crate::kernel::task::table::print_yes_no(return_kind_sleep);
+    uart::write_line("");
+
+    let reaped = crate::kernel::task::table::mark_task_finished(task_id)
+        && crate::kernel::task::table::destroy(task_id);
+
+    if started
+        && injected
+        && blocked
+        && woke_early == 0
+        && woke_on_time == 1
+        && can_resume_after_wake
+        && return_kind_sleep
+        && reaped
     {
+        uart::write_line("task sleep wake image result: OK");
         uart::write_line("task sleep wake result: OK");
     } else {
-        uart::write_line("task sleep wake result: FAILED");
+        uart::write_line("task sleep wake image result: FAILED");
         crate::arch::halt();
     }
 }
