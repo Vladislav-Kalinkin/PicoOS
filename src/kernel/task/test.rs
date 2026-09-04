@@ -18,19 +18,17 @@ use crate::kernel::cpu;
 ))]
 use crate::kernel::cpu::{current_stack_start, current_stack_top};
 
-#[cfg(feature = "task_yield_test")]
 use crate::kernel::cpu::{
     set_current, set_current_stack_bounds, set_kernel_return_pc, set_kernel_sp_before_task,
-    set_task_run_stage,
 };
 #[cfg(feature = "task_yield_test")]
+use crate::kernel::cpu::set_task_run_stage;
 use crate::kernel::task::debug::task_return_point;
 
 use crate::kernel::task::table::{
     TaskReturnContext, TaskReturnKind, create_task, print_task_name_by_id, print_tasks,
 };
 
-#[cfg(feature = "task_yield_test")]
 use crate::kernel::task::table::{get_task_entry, get_task_stack_start, get_task_stack_top};
 
 #[cfg(any(
@@ -190,7 +188,7 @@ fn print_current_task_stack_check(label: &str) {
     }
 }
 
-#[cfg(feature = "task_yield_test")]
+#[allow(dead_code)]
 pub fn run_task_on_own_stack(task_id: usize) -> ! {
     let Some(entry) = get_task_entry(task_id) else {
         uart::write_line("selected task entry: none");

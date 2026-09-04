@@ -17,6 +17,8 @@ panic = "abort"
 panic = "abort"
 
 [features]
+# Scenario / log selectors. Dispatch/run/handle_task_return compile without
+# these; PR21 will collapse the resume_* ladder into scenario_* names.
 selftest = []
 task_yield_test = []
 resume_candidate_test = []

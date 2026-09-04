@@ -1,13 +1,5 @@
 pub mod riscv64;
 
-#[cfg(any(
-    feature = "resume_restore_test",
-    feature = "scheduler_dispatch_test",
-    feature = "timer_preemption_prototype",
-    feature = "two_task_resume_handoff_test",
-))]
-pub use riscv64::restore_verified_resume_frame;
-
 pub use riscv64::*;
 
 /// Public arch-level wrapper for the RISC-V yield boundary.

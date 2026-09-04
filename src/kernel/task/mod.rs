@@ -7,14 +7,6 @@ pub mod scheduler;
 pub mod table;
 pub mod test;
 
-#[cfg(any(
-    feature = "task_yield_test",
-    feature = "task_sleep_runtime_e2e_test",
-    feature = "two_yield_task_test",
-    feature = "two_task_resume_handoff_test",
-    feature = "scheduler_fault_lifecycle_test",
-    feature = "task_fault_test"
-))]
 pub use entry::*;
 #[cfg(any(
     feature = "task_fault_test",

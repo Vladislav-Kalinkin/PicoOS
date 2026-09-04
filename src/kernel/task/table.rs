@@ -54,10 +54,7 @@ pub struct TaskReturnContext {
     pub kernel_return_pc: u64,
 }
 
-#[cfg(any(
-    feature = "scheduler_reentry_test",
-    feature = "scheduler_dispatch_test"
-))]
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub struct TaskReturnSnapshot {
     pub task_id: usize,
@@ -847,10 +844,7 @@ pub fn can_dispatch_from_ready(id: usize) -> bool {
     is_task_ready(id) && is_ready_running_faulted_finished_invariant_ok(id)
 }
 
-#[cfg(any(
-    feature = "scheduler_reentry_test",
-    feature = "scheduler_dispatch_test"
-))]
+#[allow(dead_code)]
 pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     let state = get_task_state(id)?;
     let last_return = get_task_return_kind(id)?;
@@ -864,10 +858,7 @@ pub fn get_task_return_snapshot(id: usize) -> Option<TaskReturnSnapshot> {
     })
 }
 
-#[cfg(any(
-    feature = "scheduler_reentry_test",
-    feature = "scheduler_dispatch_test"
-))]
+#[allow(dead_code)]
 pub fn get_last_returned_task_snapshot() -> Option<TaskReturnSnapshot> {
     let id = get_last_returned_task_id()?;
     get_task_return_snapshot(id)

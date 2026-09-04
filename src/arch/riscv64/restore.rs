@@ -1,9 +1,3 @@
-#[cfg(any(
-    feature = "resume_restore_test",
-    feature = "scheduler_dispatch_test",
-    feature = "timer_preemption_prototype",
-    feature = "two_task_resume_handoff_test",
-))]
 #[allow(dead_code)]
 pub fn restore_verified_resume_frame(frame: crate::kernel::task::cpu_context::TaskCpuContext) -> ! {
     crate::drivers::uart::write_line("arch restore verified resume frame:");
@@ -57,12 +51,6 @@ pub fn restore_verified_resume_frame(frame: crate::kernel::task::cpu_context::Ta
     }
 }
 
-#[cfg(any(
-    feature = "resume_restore_test",
-    feature = "scheduler_dispatch_test",
-    feature = "timer_preemption_prototype",
-    feature = "two_task_resume_handoff_test",
-))]
 fn print_restore_plan(frame: crate::kernel::task::cpu_context::TaskCpuContext) {
     crate::drivers::uart::write_line(" restore plan:");
 
@@ -83,12 +71,6 @@ fn print_restore_plan(frame: crate::kernel::task::cpu_context::TaskCpuContext) {
     crate::drivers::uart::write_line("");
 }
 
-#[cfg(any(
-    feature = "resume_restore_test",
-    feature = "scheduler_dispatch_test",
-    feature = "timer_preemption_prototype",
-    feature = "two_task_resume_handoff_test",
-))]
 fn print_restore_contract() {
     crate::drivers::uart::write_line(" assembly restore contract:");
     crate::drivers::uart::write_line(" set sp to verified frame.sp");
@@ -98,12 +80,6 @@ fn print_restore_contract() {
     crate::drivers::uart::write_line(" do not touch kernel stack after switching sp");
 }
 
-#[cfg(any(
-    feature = "resume_restore_test",
-    feature = "scheduler_dispatch_test",
-    feature = "timer_preemption_prototype",
-    feature = "two_task_resume_handoff_test",
-))]
 #[inline(never)]
 unsafe fn restore_resume_frame_asm_stub(
     frame: crate::kernel::task::cpu_context::TaskCpuContext,

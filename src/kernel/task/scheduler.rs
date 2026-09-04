@@ -1,9 +1,9 @@
+#![allow(dead_code)]
+
 use crate::drivers::uart;
 use crate::kernel::irq_cell::IrqCell;
-#[cfg(feature = "scheduler_dispatch_test")]
 use crate::kernel::task::cpu_context::TaskCpuContext;
 use crate::kernel::task::table as task;
-#[cfg(feature = "scheduler_reentry_test")]
 use crate::kernel::task::table::TaskReturnSnapshot;
 
 static CURRENT_TASK_ID: IrqCell<Option<usize>> = IrqCell::new(None);
@@ -109,28 +109,24 @@ pub fn set_current_task(id: usize) {
     force_current_task(id);
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum DispatchResult {
     NoRunnableTask,
     Failed,
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RunOnceResult {
     NoRunnableTask,
     Failed,
 }
 
-#[cfg(feature = "scheduler_run_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RunResult {
     NoRunnableTask,
     Failed,
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TaskReturnHandleResult {
     NoRunnableTask,
@@ -160,7 +156,6 @@ pub fn get_no_runnable_scheduler_snapshot() -> NoRunnableSchedulerSnapshot {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize> {
     #[cfg(feature = "scheduler_verbose_dispatch_trace")]
     {
@@ -187,7 +182,6 @@ fn find_next_dispatchable_task_after(start_after: Option<usize>) -> Option<usize
     selected
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DispatchDecision {
     StartFresh { task_id: usize },
@@ -196,7 +190,6 @@ enum DispatchDecision {
     Failed,
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DispatchDecisionKind {
     StartFresh,
@@ -205,7 +198,6 @@ enum DispatchDecisionKind {
     Failed,
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DispatchDecisionOutcome {
     Dispatchable,
@@ -213,27 +205,23 @@ enum DispatchDecisionOutcome {
     Failed,
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DispatchCandidate {
     Task { task_id: usize },
     None,
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy)]
 struct DispatchPipeline {
     current: Option<usize>,
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DispatchCandidateKind {
     Task,
     None,
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecision {
     fn kind(self) -> DispatchDecisionKind {
         match self {
@@ -261,7 +249,6 @@ impl DispatchDecision {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecisionKind {
     fn is_dispatchable(self) -> bool {
         self.outcome().is_dispatchable()
@@ -278,7 +265,6 @@ impl DispatchDecisionKind {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchDecisionOutcome {
     fn label(self) -> &'static str {
         match self {
@@ -293,7 +279,6 @@ impl DispatchDecisionOutcome {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchCandidate {
     fn kind(self) -> DispatchCandidateKind {
         match self {
@@ -317,7 +302,6 @@ impl DispatchCandidate {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchCandidateKind {
     fn label(self) -> &'static str {
         match self {
@@ -327,7 +311,6 @@ impl DispatchCandidateKind {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 impl DispatchPipeline {
     fn new(current: Option<usize>) -> Self {
         Self { current }
@@ -354,7 +337,6 @@ impl DispatchPipeline {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn build_dispatch_decision_for_task(task_id: usize) -> DispatchDecision {
     if task::is_resumable_task(task_id) {
         DispatchDecision::ResumeSaved { task_id }
@@ -365,7 +347,6 @@ fn build_dispatch_decision_for_task(task_id: usize) -> DispatchDecision {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn print_dispatch_candidate(candidate: DispatchCandidate) {
     scheduler_log_str("  dispatch candidate: ");
     scheduler_log_str(candidate.kind().label());
@@ -379,7 +360,6 @@ fn print_dispatch_candidate(candidate: DispatchCandidate) {
     scheduler_log_line("");
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn select_dispatch_decision_from_candidate(candidate: DispatchCandidate) -> DispatchDecision {
     print_dispatch_candidate(candidate);
 
@@ -395,7 +375,6 @@ fn select_dispatch_decision_from_candidate(candidate: DispatchCandidate) -> Disp
     candidate.decision()
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn select_dispatch_candidate_after(current: Option<usize>) -> DispatchCandidate {
     match find_next_dispatchable_task_after(current) {
         Some(task_id) => DispatchCandidate::Task { task_id },
@@ -403,7 +382,6 @@ fn select_dispatch_candidate_after(current: Option<usize>) -> DispatchCandidate 
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
     print_dispatch_decision_model(decision);
 
@@ -428,12 +406,10 @@ fn execute_dispatch_decision(decision: DispatchDecision) -> DispatchResult {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn run_dispatch_pipeline_after(current: Option<usize>) -> DispatchResult {
     DispatchPipeline::new(current).run()
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn print_dispatch_decision_model(decision: DispatchDecision) {
     print_dispatch_decision(decision);
 
@@ -445,7 +421,6 @@ fn print_dispatch_decision_model(decision: DispatchDecision) {
     scheduler_log_line(decision.outcome().label());
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn print_dispatch_decision(decision: DispatchDecision) {
     scheduler_log_str("  dispatch decision: ");
 
@@ -460,7 +435,6 @@ fn print_dispatch_decision(decision: DispatchDecision) {
     scheduler_log_line("");
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn print_dispatch_decision_kind(kind: DispatchDecisionKind) {
     match kind {
         DispatchDecisionKind::StartFresh => scheduler_log_str("StartFresh"),
@@ -470,7 +444,6 @@ fn print_dispatch_decision_kind(kind: DispatchDecisionKind) {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 pub fn dispatch_next() -> DispatchResult {
     scheduler_log_line("");
     scheduler_log_line("scheduler dispatch_next:");
@@ -491,7 +464,6 @@ pub fn dispatch_next() -> DispatchResult {
     run_dispatch_pipeline_after(current)
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
     scheduler_log_line("  scheduler resume path: checked resume");
 
@@ -521,7 +493,6 @@ fn resume_selected_task_checked(task_id: usize) -> DispatchResult {
     restore_selected_task_checked(task_id, frame)
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn validate_resume_frame(task_id: usize) -> Option<TaskCpuContext> {
     scheduler_log_line("  scheduler validate resume frame:");
 
@@ -567,7 +538,6 @@ fn validate_resume_frame(task_id: usize) -> Option<TaskCpuContext> {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
     scheduler_log_line("  scheduler restore path: checked restore");
 
@@ -589,33 +559,24 @@ fn restore_selected_task_checked(task_id: usize, frame: TaskCpuContext) -> ! {
 
     scheduler_log_line("  scheduler restore path result: OK");
 
-    #[cfg(any(
-        feature = "scheduler_dispatch_test",
-        feature = "two_task_resume_handoff_test",
-        feature = "task_fault_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
-    {
-        let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) else {
-            scheduler_log_line("  restore result: failed; missing task stack start");
-            crate::arch::halt();
-        };
+    let Some(stack_start) = crate::kernel::task::table::get_task_stack_start(task_id) else {
+        scheduler_log_line("  restore result: failed; missing task stack start");
+        crate::arch::halt();
+    };
 
-        let Some(stack_top) = crate::kernel::task::table::get_task_stack_top(task_id) else {
-            scheduler_log_line("  restore result: failed; missing task stack top");
-            crate::arch::halt();
-        };
+    let Some(stack_top) = crate::kernel::task::table::get_task_stack_top(task_id) else {
+        scheduler_log_line("  restore result: failed; missing task stack top");
+        crate::arch::halt();
+    };
 
-        crate::kernel::cpu::set_current(task_id);
-        crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
-    }
+    crate::kernel::cpu::set_current(task_id);
+    crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
 
     scheduler_log_line("  calling arch restore from scheduler path...");
 
     crate::arch::restore_verified_resume_frame(frame);
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn print_dispatch_task_summary(task_id: usize) {
     scheduler_log_str("  selected task: ");
     crate::kernel::task::table::print_task_name_by_id(task_id);
@@ -635,7 +596,6 @@ fn print_dispatch_task_summary(task_id: usize) {
     }
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn print_resume_frame_summary(
     frame: TaskCpuContext,
     sp_inside: Option<bool>,
@@ -685,27 +645,22 @@ fn print_resume_frame_summary(
     scheduler_log_line("");
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn scheduler_log_line(message: &str) {
     crate::kernel::log::trace("scheduler", message);
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn scheduler_log_str(message: &str) {
     crate::drivers::uart::write_str(message);
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn scheduler_log_hex(value: u64) {
     crate::drivers::uart::write_hex_u64(value);
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn scheduler_log_yes_no(value: bool) {
     crate::kernel::task::table::print_yes_no(value);
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 pub fn run_once() -> RunOnceResult {
     scheduler_log_line("");
 
@@ -726,7 +681,6 @@ pub fn run_once() -> RunOnceResult {
     }
 }
 
-#[cfg(feature = "scheduler_run_test")]
 pub fn run() -> RunResult {
     scheduler_log_line("");
     scheduler_log_line("scheduler run:");
@@ -743,7 +697,6 @@ pub fn run() -> RunResult {
     }
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 pub fn handle_task_return(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("");
     scheduler_log_line("scheduler handle_task_return:");
@@ -759,7 +712,6 @@ pub fn handle_task_return(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResul
     }
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 fn print_task_return_snapshot(snapshot: TaskReturnSnapshot) {
     scheduler_log_str("  return snapshot task: ");
     crate::kernel::task::table::print_task_name_by_id(snapshot.task_id);
@@ -778,7 +730,6 @@ fn print_task_return_snapshot(snapshot: TaskReturnSnapshot) {
     scheduler_log_line("");
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 fn handle_task_yield(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("  return action: yield -> scheduler::run");
 
@@ -805,7 +756,6 @@ fn handle_task_yield(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     }
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("  return action: exit -> no resume for returned task");
 
@@ -849,7 +799,6 @@ fn handle_task_exit(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     }
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 fn handle_task_sleep(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("  return action: sleep -> no resume until wake tick");
 
@@ -892,13 +841,11 @@ fn handle_task_sleep(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     }
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 fn handle_task_return_none(_snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("  return action: none -> failed");
     TaskReturnHandleResult::Failed
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn start_selected_task_checked(task_id: usize) -> ! {
     scheduler_log_line("  scheduler start path: checked start");
 
@@ -942,27 +889,17 @@ fn start_selected_task_checked(task_id: usize) -> ! {
 
     scheduler_log_line("  scheduler start path result: OK");
 
-    #[cfg(any(
-        feature = "scheduler_dispatch_test",
-        feature = "two_task_resume_handoff_test",
-        feature = "task_fault_test",
-        feature = "scheduler_fault_lifecycle_test"
-    ))]
-    {
-        crate::kernel::cpu::set_current(task_id);
-        crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
-    }
+    crate::kernel::cpu::set_current(task_id);
+    crate::kernel::cpu::set_current_stack_bounds(stack_start, stack_top);
 
     crate::kernel::task::run_task_on_own_stack(task_id);
 }
 
-#[cfg(feature = "scheduler_dispatch_test")]
 fn scheduler_start_failed() -> ! {
     scheduler_log_line("  scheduler start path result: FAILED");
     crate::arch::halt();
 }
 
-#[cfg(feature = "scheduler_reentry_test")]
 fn handle_task_fault(snapshot: TaskReturnSnapshot) -> TaskReturnHandleResult {
     scheduler_log_line("  return action: fault -> no resume for faulted task");
 

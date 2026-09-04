@@ -10,12 +10,6 @@ pub use cpu::without_interrupts;
 #[path = "yield.rs"]
 mod task_yield;
 
-#[cfg(any(
-    feature = "resume_restore_test",
-    feature = "scheduler_dispatch_test",
-    feature = "timer_preemption_prototype",
-    feature = "two_task_resume_handoff_test",
-))]
 pub use restore::restore_verified_resume_frame;
 
 pub use task_yield::capture_task_cpu_context;
@@ -134,7 +128,6 @@ pub fn print_cpu_info() {
 }
 
 #[allow(dead_code)]
-#[cfg(feature = "task_yield_test")]
 #[inline(never)]
 pub unsafe fn start_task_on_stack(entry: usize, stack_top: u64) -> ! {
     unsafe {
