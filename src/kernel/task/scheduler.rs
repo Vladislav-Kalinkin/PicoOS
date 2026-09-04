@@ -7,6 +7,9 @@ use crate::kernel::task::table as task;
 use crate::kernel::task::table::TaskReturnSnapshot;
 
 static CURRENT_TASK_ID: IrqCell<Option<usize>> = IrqCell::new(None);
+static DEFAULT_SEEN_YIELD: IrqCell<bool> = IrqCell::new(false);
+static DEFAULT_SEEN_SLEEP: IrqCell<bool> = IrqCell::new(false);
+static DEFAULT_MARKER_PRINTED: IrqCell<bool> = IrqCell::new(false);
 
 pub fn init() {
     CURRENT_TASK_ID.with(|current| *current = None);
@@ -101,7 +104,35 @@ fn set_round_robin_cursor(id: usize) {
 }
 
 pub fn switch_to_idle() {
-    force_current_task(0);
+    CURRENT_TASK_ID.with(|id| *id = None);
+    crate::kernel::cpu::clear_current();
+}
+
+pub fn idle_loop() -> ! {
+    switch_to_idle();
+    loop {
+        crate::arch::wait_for_interrupt();
+    }
+}
+
+pub fn note_default_image_return(kind: crate::kernel::task::table::TaskReturnKind) {
+    match kind {
+        crate::kernel::task::table::TaskReturnKind::Yield => {
+            DEFAULT_SEEN_YIELD.with(|seen| *seen = true);
+        }
+        crate::kernel::task::table::TaskReturnKind::Sleep => {
+            DEFAULT_SEEN_SLEEP.with(|seen| *seen = true);
+        }
+        _ => {}
+    }
+
+    let yield_seen = DEFAULT_SEEN_YIELD.with(|seen| *seen);
+    let sleep_seen = DEFAULT_SEEN_SLEEP.with(|seen| *seen);
+    let already = DEFAULT_MARKER_PRINTED.with(|printed| *printed);
+    if yield_seen && sleep_seen && !already {
+        DEFAULT_MARKER_PRINTED.with(|printed| *printed = true);
+        uart::write_line("default scheduler: yield and sleep OK");
+    }
 }
 
 #[allow(dead_code)]
@@ -650,15 +681,42 @@ fn scheduler_log_line(message: &str) {
 }
 
 fn scheduler_log_str(message: &str) {
+    #[cfg(any(
+        feature = "task_yield_test",
+        feature = "scheduler_verbose_dispatch_trace"
+    ))]
     crate::drivers::uart::write_str(message);
+    #[cfg(not(any(
+        feature = "task_yield_test",
+        feature = "scheduler_verbose_dispatch_trace"
+    )))]
+    let _ = message;
 }
 
 fn scheduler_log_hex(value: u64) {
+    #[cfg(any(
+        feature = "task_yield_test",
+        feature = "scheduler_verbose_dispatch_trace"
+    ))]
     crate::drivers::uart::write_hex_u64(value);
+    #[cfg(not(any(
+        feature = "task_yield_test",
+        feature = "scheduler_verbose_dispatch_trace"
+    )))]
+    let _ = value;
 }
 
 fn scheduler_log_yes_no(value: bool) {
+    #[cfg(any(
+        feature = "task_yield_test",
+        feature = "scheduler_verbose_dispatch_trace"
+    ))]
     crate::kernel::task::table::print_yes_no(value);
+    #[cfg(not(any(
+        feature = "task_yield_test",
+        feature = "scheduler_verbose_dispatch_trace"
+    )))]
+    let _ = value;
 }
 
 pub fn run_once() -> RunOnceResult {

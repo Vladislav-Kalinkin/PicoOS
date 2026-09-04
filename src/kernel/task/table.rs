@@ -458,6 +458,7 @@ const fn can_transition_from(state: TaskState, transition: TaskLifecycleTransiti
     }
 }
 
+#[allow(dead_code)]
 pub fn can_apply_task_transition(id: usize, transition: TaskLifecycleTransition) -> bool {
     get_task_state(id).is_some_and(|state| can_transition_from(state, transition))
 }

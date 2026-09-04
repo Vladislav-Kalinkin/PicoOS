@@ -8,7 +8,7 @@ mod resume;
 use crate::kernel::cpu;
 
 #[cfg(any(
-    not(feature = "task_yield_test"),
+    all(not(feature = "task_yield_test"), feature = "selftest"),
     all(
         feature = "task_yield_test",
         not(feature = "two_yield_task_test"),
@@ -18,15 +18,15 @@ use crate::kernel::cpu;
 ))]
 use crate::kernel::cpu::{current_stack_start, current_stack_top};
 
+#[cfg(feature = "task_yield_test")]
+use crate::kernel::cpu::set_task_run_stage;
 use crate::kernel::cpu::{
     set_current, set_current_stack_bounds, set_kernel_return_pc, set_kernel_sp_before_task,
 };
-#[cfg(feature = "task_yield_test")]
-use crate::kernel::cpu::set_task_run_stage;
 use crate::kernel::task::debug::task_return_point;
 
 use crate::kernel::task::table::{
-    TaskReturnContext, TaskReturnKind, create_task, print_task_name_by_id, print_tasks,
+    create_task, print_task_name_by_id, print_tasks, TaskReturnContext, TaskReturnKind,
 };
 
 use crate::kernel::task::table::{get_task_entry, get_task_stack_start, get_task_stack_top};
@@ -54,7 +54,7 @@ pub use reentry::*;
 ))]
 pub use resume::*;
 
-#[cfg(not(feature = "task_yield_test"))]
+#[cfg(all(not(feature = "task_yield_test"), feature = "selftest"))]
 pub fn test_tasks() {
     crate::kernel::task::table::init();
 
@@ -125,17 +125,55 @@ pub fn test_tasks_with_yield_worker() {
     }
 }
 
+#[cfg(any(feature = "selftest", feature = "task_yield_test"))]
 fn idle_task() {
     uart::write_line("idle_task: running");
 }
 
-#[cfg(not(feature = "task_yield_test"))]
+#[cfg(not(any(
+    feature = "selftest",
+    feature = "task_yield_test",
+    feature = "kernel_fault_guard_test"
+)))]
+fn worker_yield_main() {
+    uart::write_line("worker_yield: start");
+    loop {
+        crate::kernel::task::yield_now();
+    }
+}
+
+#[cfg(not(any(
+    feature = "selftest",
+    feature = "task_yield_test",
+    feature = "kernel_fault_guard_test"
+)))]
+fn worker_sleep_main() {
+    uart::write_line("worker_sleep: start");
+    loop {
+        crate::kernel::task::task_sleep_ticks(1);
+    }
+}
+
+#[cfg(not(any(
+    feature = "selftest",
+    feature = "task_yield_test",
+    feature = "kernel_fault_guard_test"
+)))]
+pub fn spawn_default_image() {
+    crate::kernel::task::table::init();
+    let _ = create_task("worker-yield", worker_yield_main);
+    let _ = create_task("worker-sleep", worker_sleep_main);
+    uart::write_line("default image: idle + worker_yield + worker_sleep");
+    print_tasks();
+}
+
+#[cfg(all(not(feature = "task_yield_test"), feature = "selftest"))]
 fn worker_a_task() {
     print_current_task_stack_check("worker_a_task");
 }
 
 #[cfg(any(
-    not(feature = "task_yield_test"),
+    all(not(feature = "task_yield_test"), feature = "selftest"),
     all(
         feature = "task_yield_test",
         not(feature = "two_yield_task_test"),
@@ -148,7 +186,7 @@ fn worker_b_task() {
 }
 
 #[cfg(any(
-    not(feature = "task_yield_test"),
+    all(not(feature = "task_yield_test"), feature = "selftest"),
     all(
         feature = "task_yield_test",
         not(feature = "two_yield_task_test"),
@@ -328,9 +366,12 @@ pub fn handle_task_return_for_debug_test() {
     if matches!(kind, TaskReturnKind::Yield | TaskReturnKind::Sleep) {
         let debug_resume_pc = cpu::task_resume_pc();
 
-        uart::write_str("  debug resume_pc from return boundary: ");
-        uart::write_hex_u64(debug_resume_pc);
-        uart::write_line("");
+        #[cfg(feature = "task_yield_test")]
+        {
+            uart::write_str("  debug resume_pc from return boundary: ");
+            uart::write_hex_u64(debug_resume_pc);
+            uart::write_line("");
+        }
 
         cpu_context.resume_pc = debug_resume_pc;
 
@@ -338,19 +379,25 @@ pub fn handle_task_return_for_debug_test() {
         {
             cpu_context.ra = debug_resume_pc;
 
-            uart::write_str("  saved ra for resume: ");
-            uart::write_hex_u64(cpu_context.ra);
-            uart::write_line("");
+            #[cfg(feature = "task_yield_test")]
+            {
+                uart::write_str("  saved ra for resume: ");
+                uart::write_hex_u64(cpu_context.ra);
+                uart::write_line("");
+            }
         }
     }
 
-    uart::write_str("  task: ");
-    print_task_name_by_id(task_id);
-    uart::write_line("");
+    #[cfg(feature = "task_yield_test")]
+    {
+        uart::write_str("  task: ");
+        print_task_name_by_id(task_id);
+        uart::write_line("");
 
-    uart::write_str("  captured CPU context:");
-    crate::kernel::task::cpu_context::print_cpu_context(cpu_context);
-    uart::write_line("");
+        uart::write_str("  captured CPU context:");
+        crate::kernel::task::cpu_context::print_cpu_context(cpu_context);
+        uart::write_line("");
+    }
 
     let transition_ok = crate::kernel::task::table::apply_task_return_transition(
         task_id,
@@ -359,60 +406,69 @@ pub fn handle_task_return_for_debug_test() {
         cpu_context,
     );
 
-    match kind {
-        TaskReturnKind::Exit => crate::drivers::uart::write_str("  mark finished: "),
-        TaskReturnKind::Yield => crate::drivers::uart::write_str("  mark ready after yield: "),
-        TaskReturnKind::Sleep => crate::drivers::uart::write_str("  mark blocked for sleep: "),
-        TaskReturnKind::Fault => crate::drivers::uart::write_str("  mark faulted: "),
-        TaskReturnKind::None => crate::drivers::uart::write_str("  set return kind: "),
+    #[cfg(feature = "task_yield_test")]
+    {
+        match kind {
+            TaskReturnKind::Exit => crate::drivers::uart::write_str("  mark finished: "),
+            TaskReturnKind::Yield => crate::drivers::uart::write_str("  mark ready after yield: "),
+            TaskReturnKind::Sleep => crate::drivers::uart::write_str("  mark blocked for sleep: "),
+            TaskReturnKind::Fault => crate::drivers::uart::write_str("  mark faulted: "),
+            TaskReturnKind::None => crate::drivers::uart::write_str("  set return kind: "),
+        }
+        crate::kernel::task::table::print_yes_no(transition_ok);
+        crate::drivers::uart::write_line("");
     }
-    crate::kernel::task::table::print_yes_no(transition_ok);
-    crate::drivers::uart::write_line("");
 
     if !matches!(kind, TaskReturnKind::None) {
         crate::kernel::task::scheduler::switch_to_idle();
     }
 
-    uart::write_str("  new state: ");
-    crate::kernel::task::table::print_task_state_by_id(task_id);
-    uart::write_line("");
+    #[cfg(not(feature = "task_yield_test"))]
+    let _ = transition_ok;
 
-    uart::write_str("  return kind: ");
-    crate::kernel::task::table::print_task_return_kind_by_id(task_id);
-    uart::write_line("");
-
-    uart::write_str("  can resume: ");
-    match crate::kernel::task::table::can_task_resume(task_id) {
-        Some(true) => uart::write_line("yes"),
-        Some(false) => uart::write_line("no"),
-        None => uart::write_line("unknown"),
-    }
-
-    uart::write_str("  last task SP: ");
-    uart::write_hex_u64(task_sp);
-    uart::write_line("");
-
-    uart::write_str("  last kernel SP: ");
-    uart::write_hex_u64(kernel_sp);
-    uart::write_line("");
-
-    uart::write_str("  kernel return PC: ");
-    uart::write_hex_u64(kernel_return_pc);
-    uart::write_line("");
-
-    print_last_task_sp_check(task_id, task_sp);
-    invariants::print_resume_eligibility_check(task_id);
-    invariants::print_cpu_context_consistency_check(task_id);
-    invariants::print_illegal_transition_checks(task_id);
-
-    #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
+    #[cfg(feature = "task_yield_test")]
     {
-        let _ = print_resume_pc_proximity_check(task_id);
-    }
+        uart::write_str("  new state: ");
+        crate::kernel::task::table::print_task_state_by_id(task_id);
+        uart::write_line("");
 
-    uart::write_str("  scheduler current: ");
-    crate::kernel::task::scheduler::print_current_task_name();
-    uart::write_line("");
+        uart::write_str("  return kind: ");
+        crate::kernel::task::table::print_task_return_kind_by_id(task_id);
+        uart::write_line("");
+
+        uart::write_str("  can resume: ");
+        match crate::kernel::task::table::can_task_resume(task_id) {
+            Some(true) => uart::write_line("yes"),
+            Some(false) => uart::write_line("no"),
+            None => uart::write_line("unknown"),
+        }
+
+        uart::write_str("  last task SP: ");
+        uart::write_hex_u64(task_sp);
+        uart::write_line("");
+
+        uart::write_str("  last kernel SP: ");
+        uart::write_hex_u64(kernel_sp);
+        uart::write_line("");
+
+        uart::write_str("  kernel return PC: ");
+        uart::write_hex_u64(kernel_return_pc);
+        uart::write_line("");
+
+        print_last_task_sp_check(task_id, task_sp);
+        invariants::print_resume_eligibility_check(task_id);
+        invariants::print_cpu_context_consistency_check(task_id);
+        invariants::print_illegal_transition_checks(task_id);
+
+        #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
+        {
+            let _ = print_resume_pc_proximity_check(task_id);
+        }
+
+        uart::write_str("  scheduler current: ");
+        crate::kernel::task::scheduler::print_current_task_name();
+        uart::write_line("");
+    }
 }
 
 #[cfg(feature = "task_yield_test")]
@@ -422,6 +478,7 @@ pub fn print_final_task_list() {
     crate::kernel::task::table::print_tasks();
 }
 
+#[cfg(feature = "task_yield_test")]
 fn print_last_task_sp_check(task_id: usize, task_sp: u64) {
     uart::write_line("  task return context check:");
 

@@ -68,13 +68,6 @@ task_yield_boundary:
 "#
 );
 
-#[cfg(any(
-    feature = "task_yield_test",
-    feature = "task_sleep_runtime_e2e_test",
-    feature = "two_yield_task_test",
-    feature = "two_task_resume_handoff_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
 unsafe extern "C" {
     pub fn task_yield_boundary(kernel_sp: u64, return_pc: u64);
 }
@@ -120,6 +113,7 @@ pub fn yield_to_kernel_raw(
         crate::kernel::cpu::set_task_return_kind(crate::kernel::task::TaskReturnKind::Yield);
     }
 
+    #[cfg(feature = "task_yield_test")]
     crate::kernel::cpu::print_task_resume_context();
 
     super::return_to_kernel_stack_checked(kernel_sp, kernel_return_pc);
@@ -134,10 +128,12 @@ pub unsafe extern "C" fn yield_to_kernel_returning_stub(
     kernel_sp: u64,
     return_pc: u64,
 ) -> ! {
-    crate::drivers::uart::write_line("yield returning stub:");
-    crate::drivers::uart::write_line(" mode: s0-s11");
-
-    crate::drivers::uart::write_line(" delegating to raw yield jump");
+    #[cfg(feature = "task_yield_test")]
+    {
+        crate::drivers::uart::write_line("yield returning stub:");
+        crate::drivers::uart::write_line(" mode: s0-s11");
+        crate::drivers::uart::write_line(" delegating to raw yield jump");
+    }
 
     yield_to_kernel_raw(task_sp, resume_pc, kernel_sp, return_pc);
 }

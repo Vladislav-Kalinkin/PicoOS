@@ -15,13 +15,6 @@ pub use restore::restore_verified_resume_frame;
 
 pub use task_yield::capture_task_cpu_context;
 
-#[cfg(any(
-    feature = "task_yield_test",
-    feature = "task_sleep_runtime_e2e_test",
-    feature = "two_yield_task_test",
-    feature = "two_task_resume_handoff_test",
-    feature = "scheduler_fault_lifecycle_test"
-))]
 pub use task_yield::task_yield_boundary;
 
 core::arch::global_asm!(include_str!("boot.S"));

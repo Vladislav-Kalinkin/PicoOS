@@ -6,6 +6,7 @@
 ))]
 use crate::drivers::uart;
 
+#[cfg(any(feature = "selftest", feature = "task_yield_test"))]
 pub fn print_task_zero_context_guard() {
     use crate::kernel::cpu::TrapExecutionContext;
 

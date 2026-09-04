@@ -66,54 +66,78 @@ pub extern "C" fn kernel_main() -> ! {
         arch::init_exceptions();
         arch::pmp::init();
         arch::print_cpu_info();
-        kernel::test::run_runtime_selftest_bootstrap();
 
-        kernel::task::scheduler::init();
-        kernel::test::run_runtime_selftest_after_scheduler_init();
-
+        #[cfg(any(feature = "task_yield_test", feature = "kernel_fault_guard_test"))]
         {
-            use crate::arch::riscv64::{cpu, timer};
-
-            const RISCV_TIMER_HZ: u64 = 1;
-
-            uart::write_line("");
-            uart::write_line("RISC-V timer:");
-
-            uart::write_str("timebase frequency: ");
-            uart::write_dec_u64(timer::timebase_frequency());
-            uart::write_line(" Hz");
-
-            uart::write_str("mtime before: ");
-            uart::write_hex_u64(timer::mtime());
-            uart::write_line("");
-
-            uart::write_str("starting periodic timer: ");
-            uart::write_dec_u64(RISCV_TIMER_HZ);
-            uart::write_line(" Hz");
-
-            kernel::ticks::reset();
-            timer::arm_timer_hz(RISCV_TIMER_HZ);
-
-            uart::write_line("enabling machine timer interrupt...");
-            cpu::enable_machine_timer_interrupt();
-
-            uart::write_line("enabling machine interrupts...");
-            arch::enable_irq();
-
-            uart::write_str("mstatus after enable: ");
-            uart::write_hex_u64(cpu::mstatus());
-            uart::write_line("");
-
-            uart::write_str("mie after enable: ");
-            uart::write_hex_u64(cpu::mie());
-            uart::write_line("");
-
-            uart::write_line("waiting for RISC-V ticks...");
+            kernel::test::run_runtime_selftest_bootstrap();
+            kernel::task::scheduler::init();
+            kernel::test::run_runtime_selftest_after_scheduler_init();
+            start_timer_and_wait();
         }
 
-        loop {
-            arch::wait_for_interrupt();
+        #[cfg(not(any(feature = "task_yield_test", feature = "kernel_fault_guard_test")))]
+        {
+            kernel::test::run_memory_tests();
+            kernel::task::test::spawn_default_image();
+            kernel::task::scheduler::switch_to_idle();
+            arm_timer();
+            match kernel::task::scheduler::run() {
+                kernel::task::scheduler::RunResult::NoRunnableTask => {
+                    kernel::task::scheduler::idle_loop();
+                }
+                kernel::task::scheduler::RunResult::Failed => {
+                    uart::write_line("default scheduler: FAILED");
+                    arch::halt();
+                }
+            }
         }
+    }
+}
+
+fn arm_timer() {
+    use crate::arch::riscv64::{cpu, timer};
+
+    const RISCV_TIMER_HZ: u64 = 1;
+
+    uart::write_line("");
+    uart::write_line("RISC-V timer:");
+
+    uart::write_str("timebase frequency: ");
+    uart::write_dec_u64(timer::timebase_frequency());
+    uart::write_line(" Hz");
+
+    uart::write_str("mtime before: ");
+    uart::write_hex_u64(timer::mtime());
+    uart::write_line("");
+
+    uart::write_str("starting periodic timer: ");
+    uart::write_dec_u64(RISCV_TIMER_HZ);
+    uart::write_line(" Hz");
+
+    kernel::ticks::reset();
+    timer::arm_timer_hz(RISCV_TIMER_HZ);
+
+    uart::write_line("enabling machine timer interrupt...");
+    cpu::enable_machine_timer_interrupt();
+
+    uart::write_line("enabling machine interrupts...");
+    arch::enable_irq();
+
+    uart::write_str("mstatus after enable: ");
+    uart::write_hex_u64(cpu::mstatus());
+    uart::write_line("");
+
+    uart::write_str("mie after enable: ");
+    uart::write_hex_u64(cpu::mie());
+    uart::write_line("");
+}
+
+#[cfg(any(feature = "task_yield_test", feature = "kernel_fault_guard_test"))]
+fn start_timer_and_wait() -> ! {
+    arm_timer();
+    uart::write_line("waiting for RISC-V ticks...");
+    loop {
+        arch::wait_for_interrupt();
     }
 }
 

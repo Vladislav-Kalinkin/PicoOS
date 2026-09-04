@@ -1,5 +1,7 @@
+#[cfg(feature = "task_yield_test")]
 use crate::drivers::uart;
 
+#[cfg(feature = "task_yield_test")]
 pub fn print_resume_eligibility_check(task_id: usize) {
     uart::write_line("  resume eligibility check:");
 
@@ -25,6 +27,7 @@ pub fn print_resume_eligibility_check(task_id: usize) {
     }
 }
 
+#[cfg(feature = "task_yield_test")]
 pub fn print_cpu_context_consistency_check(task_id: usize) {
     uart::write_line("  CPU context consistency check:");
 
@@ -81,6 +84,7 @@ pub fn print_cpu_context_consistency_check(task_id: usize) {
     }
 }
 
+#[cfg(feature = "task_yield_test")]
 pub fn print_illegal_transition_checks(task_id: usize) {
     use crate::kernel::task::table::TaskLifecycleTransition::{Exit, Fault, Yield};
     use crate::kernel::task::table::TaskState;

@@ -101,10 +101,12 @@ pub fn set_kernel_sp_before_task(sp: u64) {
     CPU.with(|cpu| cpu.kernel_sp_before_task = sp);
 }
 
+#[allow(dead_code)]
 pub fn current_stack_start() -> u64 {
     CPU.with(|cpu| cpu.current_stack_start)
 }
 
+#[allow(dead_code)]
 pub fn current_stack_top() -> u64 {
     CPU.with(|cpu| cpu.current_stack_top)
 }
@@ -125,6 +127,7 @@ pub fn set_last_task_sp(sp: u64) {
     CPU.with(|cpu| cpu.last_task_sp = sp);
 }
 
+#[allow(dead_code)]
 pub fn task_run_stage() -> u64 {
     CPU.with(|cpu| cpu.task_run_stage)
 }
@@ -155,6 +158,7 @@ pub fn set_task_resume_context(task_sp: u64, resume_pc: u64) {
     set_task_resume_pc(resume_pc);
 }
 
+#[allow(dead_code)]
 pub fn print_task_resume_context() {
     let task_sp = last_task_sp();
     let resume_pc = task_resume_pc();
