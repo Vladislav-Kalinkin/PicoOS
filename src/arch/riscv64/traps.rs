@@ -9,7 +9,10 @@ const TIMER_HZ: u64 = 1;
 #[unsafe(no_mangle)]
 pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
     arch::disable_irq();
-    crate::kernel::cpu::set_in_trap(true);
+
+    // SAFETY: `trap.S` stored a full `Riscv64TrapFrame` on the trap stack and
+    // passed that address to this handler.
+    let frame = unsafe { &*frame };
 
     let cause = cpu::mcause();
     let is_interrupt = (cause >> 63) != 0;
@@ -31,7 +34,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
     uart::write_line("=== RISC-V TRAP ===");
 
     uart::write_str("trap frame: ");
-    uart::write_hex_u64(frame as u64);
+    uart::write_hex_u64(core::ptr::from_ref(frame) as u64);
     uart::write_line("");
 
     uart::write_str("mcause: ");
@@ -48,87 +51,34 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
 
     print_trap_cause(cause);
 
-    #[cfg(feature = "scheduler_fault_lifecycle_test")]
-    {
-        crate::kernel::cpu::print_trap_execution_context();
-        crate::kernel::task::fault::print_current_trap_fault_classification();
-
-        match crate::kernel::task::fault::classify_current_trap_fault() {
-            crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
+    match crate::kernel::task::fault::classify_current_trap_fault() {
+        crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
+            crate::kernel::task::fault::record_and_switch_user_fault(cause, mepc, mtval);
+        }
+        crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
+            #[cfg(feature = "scenario_kernel_fault")]
+            {
+                crate::kernel::cpu::print_trap_execution_context();
+                crate::kernel::task::fault::print_current_trap_fault_classification();
                 crate::kernel::log::fail("trap", "kernel fault -> halt");
 
-                #[cfg(feature = "kernel_fault_guard_test")]
-                {
-                    let frame_on_trap_stack = arch::is_trap_stack_addr(frame as u64);
+                let frame_on_trap_stack =
+                    arch::is_trap_stack_addr(core::ptr::from_ref(frame) as u64);
+                uart::write_str("trap frame on trap stack: ");
+                crate::kernel::task::table::print_yes_no(frame_on_trap_stack);
+                uart::write_line("");
 
-                    uart::write_str("trap frame on trap stack: ");
-                    crate::kernel::task::table::print_yes_no(frame_on_trap_stack);
-                    uart::write_line("");
-
-                    if !frame_on_trap_stack {
-                        uart::write_line("kernel fault guard result: FAILED");
-                        arch::halt();
-                    }
-
-                    uart::write_line("");
-                    uart::write_line("kernel fault guard result: OK");
-                    uart::write_line("");
-                    uart::write_line("PicoOS milestone:");
-                    uart::write_line("  baseline: 0.1.0");
-                    uart::write_line("  current: 0.1.64");
-                    uart::write_line("  task fault state: OK");
-                    uart::write_line("  scheduler skips faulted tasks: OK");
-                    uart::write_line("  trap-to-task-fault skeleton: OK");
-                    uart::write_line("  real trap handler classification: OK");
-                    uart::write_line("  real trap handler task-fault return path: OK");
-                    uart::write_line("  trap stack isolation: OK");
-                    uart::write_line("  kernel fault guard: OK");
-                }
-
-                arch::halt();
-            }
-
-            crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
-                crate::kernel::log::info("trap", "marking current task as Faulted");
-
-                if crate::kernel::task::fault::record_current_task_fault(cause, mepc, mtval)
-                    .is_none()
-                {
+                if !frame_on_trap_stack {
+                    uart::write_line("kernel fault guard result: FAILED");
                     arch::halt();
                 }
 
-                let task_sp = interrupted_sp(frame);
-                let kernel_sp = crate::kernel::cpu::kernel_sp_before_task();
-                let return_pc = crate::kernel::cpu::kernel_return_pc();
-
-                uart::write_str("  task fault return SP: ");
-                uart::write_hex_u64(task_sp);
-                uart::write_line("");
-
-                uart::write_str("  saved kernel SP: ");
-                uart::write_hex_u64(kernel_sp);
-                uart::write_line("");
-
-                uart::write_str("  kernel return PC: ");
-                uart::write_hex_u64(return_pc);
-                uart::write_line("");
-
-                crate::kernel::log::info("trap", "return to kernel task return path");
-
-                crate::kernel::task::fault::return_current_task_fault(
-                    task_sp, kernel_sp, return_pc,
-                );
+                uart::write_line("kernel fault guard result: OK");
+                arch::halt();
             }
-        }
-    }
 
-    #[cfg(not(feature = "scheduler_fault_lifecycle_test"))]
-    {
-        match crate::kernel::task::fault::classify_current_trap_fault() {
-            crate::kernel::task::fault::TrapFaultClassification::TaskFault => {
-                crate::kernel::task::fault::record_and_switch_user_fault(cause, mepc, mtval);
-            }
-            crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
+            #[cfg(not(feature = "scenario_kernel_fault"))]
+            {
                 crate::kernel::log::fail("trap", "system halted after trap");
                 arch::halt();
             }
@@ -136,18 +86,17 @@ pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
     }
 }
 
-fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) -> ! {
+fn handle_timer_interrupt(frame: &Riscv64TrapFrame) -> ! {
     timer::disarm_timer();
 
-    let saved_sp = interrupted_sp(frame);
+    let saved_sp = frame.sp;
     let saved_pc = cpu::mepc();
     let saved_mstatus = cpu::mstatus();
 
     let interrupted_worker = crate::kernel::cpu::current();
     if let Some(id) = interrupted_worker {
-        let image = unsafe { TrapImage::from_frame(&*frame, saved_pc, saved_mstatus) };
+        let image = TrapImage::from_frame(frame, saved_pc, saved_mstatus);
         let _ = crate::kernel::task::table::save_preempted_trap_image(id, &image);
-        let _ = crate::kernel::task::scheduler::save_current_context(saved_sp, saved_pc);
     }
 
     let tick = crate::kernel::ticks::increment();
@@ -165,7 +114,7 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) -> ! {
         None => uart::write_str("none"),
     }
 
-    let next = crate::kernel::task::scheduler::prepare_timer_switch(interrupted_worker);
+    let next = crate::kernel::task::scheduler::next_after(interrupted_worker);
 
     uart::write_str(" decision next: ");
     match next {
@@ -186,41 +135,15 @@ fn handle_timer_interrupt(frame: *const Riscv64TrapFrame) -> ! {
     uart::write_line("");
     crate::kernel::log::info("timer", "scheduler decision computed");
 
-    if crate::kernel::ticks::is_test_complete() {
-        cpu::disable_machine_timer_interrupt();
-        crate::kernel::test::print_test_complete();
-        arch::halt();
-    }
-
     timer::arm_timer_hz(TIMER_HZ);
 
-    match next {
-        Some(id) => {
-            let fresh = crate::kernel::task::table::is_fresh_ready_task(id);
-            let Some(image) = (if fresh {
-                crate::kernel::task::scheduler::build_fresh_trap_image(id)
-            } else {
-                crate::kernel::task::scheduler::trap_image_for_resume(id)
-            }) else {
-                crate::arch::idle_exit_from_trap();
-            };
-
-            crate::kernel::task::scheduler::arm_worker_for_mret(id, fresh);
-
-            #[cfg(feature = "timer_preemption_selftest")]
-            {
-                crate::kernel::log::ok("timer", "preemption: mret to worker");
-                uart::write_line("timer preemption result: OK");
-            }
-
-            crate::arch::mret_to_trap_image(&image);
-        }
-        None => crate::arch::idle_exit_from_trap(),
+    #[cfg(feature = "scenario_preempt")]
+    if next.is_some() {
+        crate::kernel::log::ok("timer", "preemption: mret to worker");
+        uart::write_line("timer preemption result: OK");
     }
-}
 
-const fn interrupted_sp(frame: *const Riscv64TrapFrame) -> u64 {
-    unsafe { (*frame).sp }
+    crate::kernel::task::scheduler::switch_to(next);
 }
 
 fn print_trap_cause(cause: u64) {

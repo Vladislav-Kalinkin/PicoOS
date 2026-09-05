@@ -3,12 +3,14 @@ use crate::platform;
 
 pub fn putc(byte: u8) {
     loop {
+        // SAFETY: `UART0_LSR` is the NS16550 line-status register.
         let lsr = unsafe { mmio::read8(platform::UART0_LSR) };
         if lsr & platform::UART_LSR_THRE != 0 {
             break;
         }
     }
 
+    // SAFETY: `UART0_BASE` is the NS16550 THR/RBR register.
     unsafe {
         mmio::write32(platform::UART0_BASE, u32::from(byte));
     }

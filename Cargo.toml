@@ -17,94 +17,16 @@ panic = "abort"
 panic = "abort"
 
 [features]
-# Public scenario selectors (PR21). Internal resume_* / scheduler_* flags
-# remain as the implementation of these clusters.
-#
-# Always-on (not a feature): U-mode mret restore, timer preemption via mret,
-# YieldImage s0–s11 restore jump, reap of Finished/Faulted on the ecall path,
-# scheduler start via mret. Scenario flags pick workers and UART contracts.
-#
-# scenario_resume rides the default U-mode ecall/mret path (not the M-mode
-# yield_now selftest). Other scenario_* clusters still use task_yield_test.
+# Public scenario selectors. Always-on: U-mode mret, timer preemption via
+# mret, reap on the ecall path, scheduler start via mret. Scenario flags
+# only pick workers and UART contracts. There is no M-mode yield_now path.
 scenario_resume = []
-scenario_sleep = ["task_sleep_runtime_e2e_selftest"]
-scenario_handoff = ["two_task_resume_handoff_selftest"]
-scenario_fault = ["scheduler_fault_lifecycle_test"]
-scenario_preempt = ["timer_preemption_selftest"]
-scenario_kernel_fault = ["kernel_fault_guard_test"]
-scenario_reap = ["selftest"]
-scenario_run = ["scheduler_run_selftest"]
-scenario_reentry = ["scheduler_reentry_selftest"]
-
-selftest = []
-task_yield_test = []
-two_yield_task_test = []
-scheduler_resume_loop_test = []
-verbose_resume_debug = []
-scheduler_dispatch_test = []
-scheduler_run_test = []
-scheduler_reentry_test = []
-two_task_resume_handoff_test = []
-task_fault_test = []
-kernel_fault_guard_test = [
-  "scheduler_fault_lifecycle_test",
-]
-scheduler_verbose_dispatch_trace = []
-task_sleep_test = []
-task_sleep_runtime_e2e_test = []
-kernel_log_scoped = []
-log_trap = []
-log_timer = []
-log_fault = []
-log_sleep = []
-two_task_resume_handoff_selftest = [
-  "scheduler_reentry_selftest",
-  "two_task_resume_handoff_test",
-]
-
-scheduler_run_once_selftest = [
-  "task_resume_selftest",
-  "scheduler_dispatch_test",
-]
-
-scheduler_run_selftest = [
-  "scheduler_run_once_selftest",
-  "scheduler_run_test",
-]
-
-scheduler_runtime_selftest = [
-  "scheduler_run_selftest",
-]
-
-scheduler_reentry_selftest = [
-  "scheduler_runtime_selftest",
-  "scheduler_reentry_test",
-]
-
-task_resume_selftest = [
-  "task_yield_test",
-  "two_yield_task_test",
-  "scheduler_resume_loop_test",
-]
-
-timer_preemption_selftest = [
-  "task_yield_test",
-]
-
-task_sleep_runtime_e2e_selftest = [
-  "task_yield_test",
-  "task_sleep_test",
-  "task_sleep_runtime_e2e_test",
-]
-
-scheduler_fault_lifecycle_test = [
-  "task_yield_test",
-  "task_fault_test",
-  "scheduler_reentry_test",
-  "scheduler_dispatch_test",
-  "scheduler_run_test",
-  "scheduler_resume_loop_test",
-]
+scenario_reap = []
+scenario_sleep = []
+scenario_handoff = []
+scenario_fault = []
+scenario_preempt = []
+scenario_kernel_fault = []
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
@@ -143,12 +65,12 @@ multiple_crate_versions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
-missing_safety_doc = "allow"            # remaining unsafe is CSR/MMIO/asm; IrqCell has SAFETY
-undocumented_unsafe_blocks = "allow"    # same
-multiple_unsafe_ops_per_block = "allow" # same
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "allow" # CSR/MMIO asm blocks keep one instruction sequence
 module_name_repetitions = "allow"
-too_many_lines = "allow"                # restore.rs UART restore contract still exceeds 100
-manual_memcpy = "allow"                 # table create_task still copies fields explicitly
+too_many_lines = "deny"
+manual_memcpy = "deny"
 inline_always = "allow"                 # CSR/MMIO helpers
 large_stack_arrays = "allow"            # static task table
 cast_possible_truncation = "allow"      # MMIO/CSR width conversions

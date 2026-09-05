@@ -1,56 +1,8 @@
 use crate::drivers::uart;
 mod bootstrap;
-mod fault;
-mod handoff;
-mod invariants;
-mod reentry;
-#[cfg(feature = "task_yield_test")]
-mod resume;
-use crate::kernel::cpu;
+use crate::kernel::task::table::{create_task, print_tasks};
 
-#[cfg(any(
-    all(not(feature = "task_yield_test"), feature = "selftest"),
-    all(
-        feature = "task_yield_test",
-        not(feature = "two_yield_task_test"),
-        not(feature = "two_task_resume_handoff_test"),
-        not(feature = "scheduler_fault_lifecycle_test")
-    )
-))]
-use crate::kernel::cpu::{current_stack_start, current_stack_top};
-
-#[cfg(feature = "task_yield_test")]
-use crate::kernel::cpu::set_task_run_stage;
-use crate::kernel::cpu::{
-    set_current, set_current_stack_bounds, set_kernel_return_pc, set_kernel_sp_before_task,
-};
-use crate::kernel::task::debug::task_return_point;
-
-use crate::kernel::task::table::{
-    create_task, print_task_name_by_id, print_tasks, TaskReturnContext, TaskReturnKind,
-};
-
-use crate::kernel::task::table::{get_task_entry, get_task_stack_start, get_task_stack_top};
-
-#[cfg(any(
-    feature = "task_fault_test",
-    feature = "scheduler_fault_lifecycle_test",
-    feature = "kernel_fault_guard_test"
-))]
-pub use fault::*;
-#[cfg(feature = "two_task_resume_handoff_test")]
-pub use handoff::*;
-#[cfg(any(
-    feature = "scheduler_reentry_test",
-    feature = "scheduler_fault_lifecycle_test",
-    feature = "two_task_resume_handoff_test",
-    feature = "two_yield_task_test"
-))]
-pub use reentry::*;
-#[cfg(feature = "task_yield_test")]
-pub use resume::*;
-
-#[cfg(all(not(feature = "task_yield_test"), feature = "selftest"))]
+#[cfg(feature = "scenario_reap")]
 pub fn test_tasks() {
     crate::kernel::task::table::init();
 
@@ -62,135 +14,27 @@ pub fn test_tasks() {
     print_tasks();
 }
 
-#[cfg(feature = "task_yield_test")]
-pub fn test_tasks_with_yield_worker() {
-    crate::kernel::task::table::init();
-    let _ = create_task("idle", idle_task);
-    bootstrap::print_task_zero_context_guard();
-
-    #[cfg(feature = "scheduler_fault_lifecycle_test")]
-    {
-        let _ = create_task("worker-a", real_trap_handler_worker_a);
-        let _ = create_task("trap-worker", real_trap_handler_worker);
-    }
-
-    #[cfg(all(
-        feature = "two_task_resume_handoff_test",
-        not(feature = "scheduler_fault_lifecycle_test")
-    ))]
-    {
-        let _ = create_task("worker-a", handoff_worker_a);
-        let _ = create_task("worker-b", handoff_worker_b);
-    }
-
-    #[cfg(all(
-        feature = "task_sleep_runtime_e2e_test",
-        not(feature = "scheduler_fault_lifecycle_test"),
-        not(feature = "two_task_resume_handoff_test")
-    ))]
-    {
-        let _ = create_task("worker-a", sleeping_task_runtime_e2e);
-    }
-
-    #[cfg(all(
-        feature = "two_yield_task_test",
-        not(feature = "task_sleep_runtime_e2e_test"),
-        not(feature = "two_task_resume_handoff_test"),
-        not(feature = "scheduler_fault_lifecycle_test")
-    ))]
-    {
-        let _ = create_task("worker-a", two_yielding_task);
-    }
-
-    #[cfg(not(any(
-        feature = "task_sleep_runtime_e2e_test",
-        feature = "two_yield_task_test",
-        feature = "two_task_resume_handoff_test",
-        feature = "scheduler_fault_lifecycle_test"
-    )))]
-    {
-        let _ = create_task("worker-a", yielding_task);
-        let _ = create_task("worker-b", worker_b_task);
-    }
-
-    print_tasks();
-
-    #[cfg(feature = "task_sleep_test")]
-    {
-        bootstrap::test_task_sleep_wakeup_table_selftest();
-    }
-}
-
-#[cfg(any(feature = "selftest", feature = "task_yield_test"))]
+#[cfg(feature = "scenario_reap")]
 fn idle_task() {
     uart::write_line("idle_task: running");
 }
 
-#[cfg(not(any(
-    feature = "selftest",
-    feature = "task_yield_test",
-    feature = "kernel_fault_guard_test",
-    feature = "scenario_resume"
-)))]
-fn worker_yield_main() {
-    crate::kernel::sys::u_sys_log(b"worker_yield: start\n");
-    loop {
-        crate::kernel::sys::u_sys_yield();
-    }
+#[cfg(feature = "scenario_reap")]
+fn worker_a_task() {
+    uart::write_line("worker_a_task: running");
 }
 
-#[cfg(not(any(
-    feature = "selftest",
-    feature = "task_yield_test",
-    feature = "kernel_fault_guard_test",
-    feature = "scenario_resume"
-)))]
-fn worker_sleep_main() {
-    crate::kernel::sys::u_sys_log(b"worker_sleep: start\n");
-    loop {
-        crate::kernel::sys::u_sys_sleep(1);
-    }
+#[cfg(feature = "scenario_reap")]
+fn worker_b_task() {
+    uart::write_line("worker_b_task: running");
 }
 
-#[cfg(not(any(
-    feature = "selftest",
-    feature = "task_yield_test",
-    feature = "kernel_fault_guard_test",
-    feature = "scenario_resume"
-)))]
-fn worker_pmp_deny() {
-    crate::kernel::sys::u_sys_log(b"pmp deny probe: store to .data\n");
-    unsafe {
-        core::ptr::write_volatile(crate::kernel::memory::data_start() as *mut u64, 0xDEAD);
-    }
-    crate::kernel::sys::u_sys_log(b"pmp deny probe: FAILED\n");
-    crate::kernel::sys::u_sys_exit();
-}
-
-#[cfg(all(
-    not(any(
-        feature = "selftest",
-        feature = "task_yield_test",
-        feature = "kernel_fault_guard_test"
-    )),
-    feature = "scenario_resume"
-))]
-fn worker_two_yield() {
-    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 1\n");
-    crate::kernel::sys::u_sys_yield();
-    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 2\n");
-    crate::kernel::sys::u_sys_yield();
-    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 3\n");
-    crate::kernel::sys::u_sys_exit();
-}
-
-#[cfg(not(any(
-    feature = "selftest",
-    feature = "task_yield_test",
-    feature = "kernel_fault_guard_test"
-)))]
+#[cfg(not(any(feature = "scenario_reap", feature = "scenario_kernel_fault")))]
 pub fn spawn_default_image() {
     crate::kernel::task::table::init();
+
+    #[cfg(feature = "scenario_sleep")]
+    bootstrap::test_task_sleep_wakeup_table_selftest();
 
     #[cfg(feature = "scenario_resume")]
     {
@@ -198,7 +42,39 @@ pub fn spawn_default_image() {
         uart::write_line("resume image: U-mode two-yield worker");
     }
 
-    #[cfg(not(feature = "scenario_resume"))]
+    #[cfg(feature = "scenario_handoff")]
+    {
+        let _ = create_task("worker-a", worker_handoff_a);
+        let _ = create_task("worker-b", worker_handoff_b);
+        uart::write_line("handoff image: two U-mode yield workers");
+    }
+
+    #[cfg(feature = "scenario_fault")]
+    {
+        let _ = create_task("worker-a", worker_clean_exit);
+        let _ = create_task("trap-worker", worker_ebreak);
+        uart::write_line("fault image: exit worker + U-mode ebreak");
+    }
+
+    #[cfg(feature = "scenario_sleep")]
+    {
+        let _ = create_task("worker-sleep", worker_sleep_e2e);
+        uart::write_line("sleep image: U-mode sleep then exit");
+    }
+
+    #[cfg(feature = "scenario_preempt")]
+    {
+        let _ = create_task("worker-yield", worker_yield_main);
+        uart::write_line("preempt image: U-mode yield loop");
+    }
+
+    #[cfg(not(any(
+        feature = "scenario_resume",
+        feature = "scenario_handoff",
+        feature = "scenario_fault",
+        feature = "scenario_sleep",
+        feature = "scenario_preempt"
+    )))]
     {
         let _ = create_task("worker-yield", worker_yield_main);
         let _ = create_task("worker-sleep", worker_sleep_main);
@@ -209,330 +85,105 @@ pub fn spawn_default_image() {
     print_tasks();
 }
 
-#[cfg(all(not(feature = "task_yield_test"), feature = "selftest"))]
-fn worker_a_task() {
-    print_current_task_stack_check("worker_a_task");
-}
-
-#[cfg(any(
-    all(not(feature = "task_yield_test"), feature = "selftest"),
-    all(
-        feature = "task_yield_test",
-        not(feature = "two_yield_task_test"),
-        not(feature = "two_task_resume_handoff_test"),
-        not(feature = "scheduler_fault_lifecycle_test")
-    )
-))]
-fn worker_b_task() {
-    print_current_task_stack_check("worker_b_task");
-}
-
-#[cfg(any(
-    all(not(feature = "task_yield_test"), feature = "selftest"),
-    all(
-        feature = "task_yield_test",
-        not(feature = "two_yield_task_test"),
-        not(feature = "two_task_resume_handoff_test"),
-        not(feature = "scheduler_fault_lifecycle_test")
-    )
-))]
-fn print_current_task_stack_check(label: &str) {
-    uart::write_str(label);
-    uart::write_line(": running");
-
-    let sp = crate::arch::stack_pointer();
-    let stack_start = current_stack_start();
-    let stack_top = current_stack_top();
-
-    uart::write_str(label);
-    uart::write_str(" SP: ");
-    uart::write_hex_u64(sp);
-    uart::write_line("");
-
-    uart::write_str("expected stack: ");
-    uart::write_hex_u64(stack_start);
-    uart::write_str(" - ");
-    uart::write_hex_u64(stack_top);
-    uart::write_line("");
-
-    uart::write_str("saved kernel SP before task: ");
-    uart::write_hex_u64(cpu::kernel_sp_before_task());
-    uart::write_line("");
-
-    uart::write_str("SP check: ");
-
-    if sp >= stack_start && sp < stack_top {
-        uart::write_line("inside task stack");
-    } else {
-        uart::write_line("OUTSIDE task stack");
+#[cfg(not(any(
+    feature = "scenario_reap",
+    feature = "scenario_kernel_fault",
+    feature = "scenario_resume",
+    feature = "scenario_handoff",
+    feature = "scenario_fault",
+    feature = "scenario_sleep"
+)))]
+fn worker_yield_main() {
+    crate::kernel::sys::u_sys_log(b"worker_yield: start\n");
+    loop {
+        crate::kernel::sys::u_sys_yield();
     }
 }
 
-#[allow(dead_code)]
-pub fn run_task_on_own_stack(task_id: usize) -> ! {
-    let Some(entry) = get_task_entry(task_id) else {
-        uart::write_line("selected task entry: none");
-        crate::arch::halt();
-    };
+#[cfg(not(any(
+    feature = "scenario_reap",
+    feature = "scenario_kernel_fault",
+    feature = "scenario_resume",
+    feature = "scenario_handoff",
+    feature = "scenario_fault",
+    feature = "scenario_sleep",
+    feature = "scenario_preempt"
+)))]
+fn worker_sleep_main() {
+    crate::kernel::sys::u_sys_log(b"worker_sleep: start\n");
+    loop {
+        crate::kernel::sys::u_sys_sleep(1);
+    }
+}
 
-    let Some(stack_start) = get_task_stack_start(task_id) else {
-        uart::write_line("selected task stack start: none");
-        crate::arch::halt();
-    };
-
-    let Some(stack_top) = get_task_stack_top(task_id) else {
-        uart::write_line("selected task stack: none");
-        crate::arch::halt();
-    };
-
-    uart::write_str("selected task: ");
-    print_task_name_by_id(task_id);
-    uart::write_line("");
-
-    uart::write_str("entry: ");
-    uart::write_hex_u64(entry as usize as u64);
-    uart::write_line("");
-
-    uart::write_str("stack_top: ");
-    uart::write_hex_u64(stack_top);
-    uart::write_line("");
-
-    uart::write_str("stack_start: ");
-    uart::write_hex_u64(stack_start);
-    uart::write_line("");
-
-    let kernel_sp_before_task = crate::arch::stack_pointer();
-    let kernel_return_pc = task_return_point as *const () as usize as u64;
-
-    uart::write_str("kernel_sp_before_task: ");
-    uart::write_hex_u64(kernel_sp_before_task);
-    uart::write_line("");
-
-    uart::write_str("task_stack_top: ");
-    uart::write_hex_u64(stack_top);
-    uart::write_line("");
-
-    uart::write_str("kernel_return_pc: ");
-    uart::write_hex_u64(kernel_return_pc);
-    uart::write_line("");
-
-    uart::write_line("switching to task stack...");
-
-    set_current(task_id);
-    set_current_stack_bounds(stack_start, stack_top);
-    set_kernel_sp_before_task(kernel_sp_before_task);
-    set_kernel_return_pc(kernel_return_pc);
-    crate::kernel::task::table::mark_task_started(task_id);
+#[cfg(not(any(
+    feature = "scenario_reap",
+    feature = "scenario_kernel_fault",
+    feature = "scenario_resume",
+    feature = "scenario_handoff",
+    feature = "scenario_fault",
+    feature = "scenario_sleep",
+    feature = "scenario_preempt"
+)))]
+fn worker_pmp_deny() {
+    crate::kernel::sys::u_sys_log(b"pmp deny probe: store to .data\n");
+    // SAFETY: U-mode PMP probe; a store to `.data` must trap.
     unsafe {
-        crate::arch::start_task_on_stack(entry as usize, stack_top);
+        core::ptr::write_volatile(crate::kernel::memory::data_start() as *mut u64, 0xDEAD);
     }
+    crate::kernel::sys::u_sys_log(b"pmp deny probe: FAILED\n");
+    crate::kernel::sys::u_sys_exit();
 }
 
-#[cfg(all(feature = "task_yield_test", not(feature = "two_yield_task_test")))]
-fn yielding_task() {
-    uart::write_line("yielding_task: step 1");
-
-    crate::kernel::task::yield_now();
-
-    uart::write_line("yielding_task: step 2");
-
-    crate::kernel::task::task_exit();
+#[cfg(feature = "scenario_resume")]
+fn worker_two_yield() {
+    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 1\n");
+    crate::kernel::sys::u_sys_yield();
+    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 2\n");
+    crate::kernel::sys::u_sys_yield();
+    crate::kernel::sys::u_sys_log(b"two_yielding_task: step 3\n");
+    crate::kernel::sys::u_sys_exit();
 }
 
-#[cfg(feature = "task_sleep_runtime_e2e_test")]
-fn sleeping_task_runtime_e2e() {
-    uart::write_line("sleeping_task_runtime_e2e: step 1");
-    crate::kernel::task::task_sleep_ticks(2);
-    uart::write_line("sleeping_task_runtime_e2e: resumed after timer wake");
-    crate::kernel::task::task_exit();
+#[cfg(feature = "scenario_handoff")]
+fn worker_handoff_a() {
+    crate::kernel::sys::u_sys_log(b"handoff_worker_a: step 1\n");
+    crate::kernel::sys::u_sys_yield();
+    crate::kernel::sys::u_sys_log(b"handoff_worker_a: resumed after first yield\n");
+    crate::kernel::sys::u_sys_yield();
+    crate::kernel::sys::u_sys_log(b"handoff_worker_a: resumed after second yield\n");
+    crate::kernel::sys::u_sys_exit();
 }
 
-#[cfg(feature = "task_yield_test")]
-pub fn test_task_yield() {
-    uart::write_line("");
-    uart::write_line("task yield test:");
-
-    set_task_run_stage(10);
-
-    #[cfg(feature = "scheduler_fault_lifecycle_test")]
-    {
-        bootstrap::test_scheduler_fault_lifecycle_bootstrap();
-    }
-
-    #[cfg(all(
-        feature = "task_fault_test",
-        not(feature = "scheduler_fault_lifecycle_test")
-    ))]
-    {
-        bootstrap::test_task_fault_bootstrap();
-    }
-
-    #[cfg(all(
-        feature = "two_task_resume_handoff_test",
-        not(feature = "task_fault_test"),
-        not(feature = "scheduler_fault_lifecycle_test")
-    ))]
-    {
-        bootstrap::test_two_task_resume_handoff_bootstrap();
-    }
-
-    #[cfg(not(any(
-        feature = "two_task_resume_handoff_test",
-        feature = "task_fault_test",
-        feature = "scheduler_fault_lifecycle_test"
-    )))]
-    {
-        uart::write_line("selected task: worker-a");
-        run_task_on_own_stack(1);
-    }
+#[cfg(feature = "scenario_handoff")]
+fn worker_handoff_b() {
+    crate::kernel::sys::u_sys_log(b"handoff_worker_b: step 1\n");
+    crate::kernel::sys::u_sys_yield();
+    crate::kernel::sys::u_sys_log(b"handoff_worker_b: resumed after yield\n");
+    crate::kernel::sys::u_sys_exit();
 }
 
-pub fn handle_task_return_for_debug_test() {
-    let Some(task_id) = cpu::current() else {
-        uart::write_line("task return with no current task");
-        crate::arch::halt();
-    };
-    let kind = cpu::task_return_kind();
-    let task_sp = cpu::last_task_sp();
-    let kernel_sp = cpu::kernel_sp_before_task();
-    let kernel_return_pc = cpu::kernel_return_pc();
-
-    let return_context = TaskReturnContext {
-        task_sp,
-        kernel_sp,
-        kernel_return_pc,
-    };
-
-    let mut cpu_context = crate::arch::capture_task_cpu_context(task_sp, kernel_return_pc);
-
-    if matches!(kind, TaskReturnKind::Yield | TaskReturnKind::Sleep) {
-        let debug_resume_pc = cpu::task_resume_pc();
-
-        #[cfg(feature = "task_yield_test")]
-        {
-            uart::write_str("  debug resume_pc from return boundary: ");
-            uart::write_hex_u64(debug_resume_pc);
-            uart::write_line("");
-        }
-
-        cpu_context.resume_pc = debug_resume_pc;
-
-        #[cfg(target_arch = "riscv64")]
-        {
-            cpu_context.ra = debug_resume_pc;
-
-            #[cfg(feature = "task_yield_test")]
-            {
-                uart::write_str("  saved ra for resume: ");
-                uart::write_hex_u64(cpu_context.ra);
-                uart::write_line("");
-            }
-        }
-    }
-
-    #[cfg(feature = "task_yield_test")]
-    {
-        uart::write_str("  task: ");
-        print_task_name_by_id(task_id);
-        uart::write_line("");
-
-        uart::write_str("  captured CPU context:");
-        crate::kernel::task::cpu_context::print_cpu_context(cpu_context);
-        uart::write_line("");
-    }
-
-    let transition_ok = crate::kernel::task::table::apply_task_return_transition(
-        task_id,
-        kind,
-        return_context,
-        cpu_context,
-    );
-
-    #[cfg(feature = "task_yield_test")]
-    {
-        match kind {
-            TaskReturnKind::Exit => crate::drivers::uart::write_str("  mark finished: "),
-            TaskReturnKind::Yield => crate::drivers::uart::write_str("  mark ready after yield: "),
-            TaskReturnKind::Sleep => crate::drivers::uart::write_str("  mark blocked for sleep: "),
-            TaskReturnKind::Fault => crate::drivers::uart::write_str("  mark faulted: "),
-            TaskReturnKind::None => crate::drivers::uart::write_str("  set return kind: "),
-        }
-        crate::kernel::task::table::print_yes_no(transition_ok);
-        crate::drivers::uart::write_line("");
-    }
-
-    if !matches!(kind, TaskReturnKind::None) {
-        crate::kernel::task::scheduler::switch_to_idle();
-    }
-
-    #[cfg(not(feature = "task_yield_test"))]
-    let _ = transition_ok;
-
-    #[cfg(feature = "task_yield_test")]
-    {
-        uart::write_str("  new state: ");
-        crate::kernel::task::table::print_task_state_by_id(task_id);
-        uart::write_line("");
-
-        uart::write_str("  return kind: ");
-        crate::kernel::task::table::print_task_return_kind_by_id(task_id);
-        uart::write_line("");
-
-        uart::write_str("  can resume: ");
-        match crate::kernel::task::table::can_task_resume(task_id) {
-            Some(true) => uart::write_line("yes"),
-            Some(false) => uart::write_line("no"),
-            None => uart::write_line("unknown"),
-        }
-
-        uart::write_str("  last task SP: ");
-        uart::write_hex_u64(task_sp);
-        uart::write_line("");
-
-        uart::write_str("  last kernel SP: ");
-        uart::write_hex_u64(kernel_sp);
-        uart::write_line("");
-
-        uart::write_str("  kernel return PC: ");
-        uart::write_hex_u64(kernel_return_pc);
-        uart::write_line("");
-
-        print_last_task_sp_check(task_id, task_sp);
-        invariants::print_resume_eligibility_check(task_id);
-        invariants::print_cpu_context_consistency_check(task_id);
-        invariants::print_illegal_transition_checks(task_id);
-
-        #[cfg(any(feature = "two_task_resume_handoff_test", feature = "task_fault_test"))]
-        {
-            let _ = print_resume_pc_proximity_check(task_id);
-        }
-
-        uart::write_str("  scheduler current: ");
-        crate::kernel::task::scheduler::print_current_task_name();
-        uart::write_line("");
-    }
+#[cfg(feature = "scenario_fault")]
+fn worker_clean_exit() {
+    crate::kernel::sys::u_sys_log(b"worker-a: exit\n");
+    crate::kernel::sys::u_sys_exit();
 }
 
-#[cfg(feature = "task_yield_test")]
-pub fn print_final_task_list() {
-    uart::write_line("");
-    uart::write_line("final task list:");
-    crate::kernel::task::table::print_tasks();
+#[cfg(feature = "scenario_fault")]
+fn worker_ebreak() {
+    crate::kernel::sys::u_sys_log(b"trap-worker: ebreak\n");
+    // SAFETY: `ebreak` is the intended U-mode fault for this worker.
+    unsafe {
+        core::arch::asm!("ebreak", options(nomem, nostack, preserves_flags));
+    }
+    crate::kernel::sys::u_sys_log(b"trap-worker: FAILED\n");
+    crate::kernel::sys::u_sys_exit();
 }
 
-#[cfg(feature = "task_yield_test")]
-fn print_last_task_sp_check(task_id: usize, task_sp: u64) {
-    uart::write_line("  task return context check:");
-
-    match crate::kernel::task::table::is_sp_inside_task_stack(task_id, task_sp) {
-        Some(true) => {
-            uart::write_line("    task SP: inside task stack");
-        }
-        Some(false) => {
-            uart::write_line("    task SP: outside task stack");
-        }
-        None => {
-            uart::write_line("    task SP: unknown task");
-        }
-    }
+#[cfg(feature = "scenario_sleep")]
+fn worker_sleep_e2e() {
+    crate::kernel::sys::u_sys_log(b"sleeping_task_runtime_e2e: step 1\n");
+    crate::kernel::sys::u_sys_sleep(2);
+    crate::kernel::sys::u_sys_log(b"sleeping_task_runtime_e2e: resumed after timer wake\n");
+    crate::kernel::sys::u_sys_exit();
 }

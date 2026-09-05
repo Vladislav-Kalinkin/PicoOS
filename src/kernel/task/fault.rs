@@ -27,7 +27,7 @@ pub fn classify_current_trap_fault() -> TrapFaultClassification {
     TrapFaultClassification::TaskFault
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "scenario_kernel_fault")]
 pub fn print_current_trap_fault_classification() {
     uart::write_line("trap fault classification:");
 
@@ -64,9 +64,7 @@ pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<u
         crate::arch::halt();
     }
 
-    let Some(fault_reason) =
-        crate::kernel::task::table::record_task_fault(task_id, mcause, mepc, mtval)
-    else {
+    let Some(fault_reason) = crate::kernel::task::table::record_task_fault(task_id, mcause) else {
         crate::kernel::log::fail("fault", "record task fault: FAILED");
         return None;
     };
@@ -109,15 +107,11 @@ pub fn record_and_switch_user_fault(mcause: u64, mepc: u64, mtval: u64) -> ! {
         crate::drivers::uart::write_line("pmp deny: task fault OK");
     }
 
+    crate::kernel::task::scheduler::note_default_image_return(
+        crate::kernel::task::table::TaskReturnKind::Fault,
+    );
+
     let after = crate::kernel::cpu::current();
     crate::kernel::cpu::clear_current();
-    crate::kernel::sys::switch_after_syscall(after);
-}
-
-#[allow(dead_code)]
-pub fn return_current_task_fault(task_sp: u64, kernel_sp: u64, return_pc: u64) -> ! {
-    crate::kernel::cpu::set_last_task_sp(task_sp);
-    crate::kernel::cpu::set_task_return_kind(crate::kernel::task::table::TaskReturnKind::Fault);
-
-    crate::arch::return_to_kernel_stack_checked(kernel_sp, return_pc);
+    crate::kernel::task::scheduler::switch_after(after);
 }

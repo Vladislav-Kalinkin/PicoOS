@@ -29,12 +29,13 @@ CLIPPY_FLAGS=(
   -A clippy::multiple_crate_versions
   -A clippy::inline_always
   -A clippy::wildcard_imports
-  -A clippy::too_many_lines
+  -D clippy::too_many_lines
+  -D clippy::manual_memcpy
   -A clippy::missing_errors_doc
   -A clippy::missing_panics_doc
   -A clippy::must_use_candidate
-  -A clippy::missing_safety_doc
-  -A clippy::undocumented_unsafe_blocks
+  -D clippy::missing_safety_doc
+  -D clippy::undocumented_unsafe_blocks
   -A clippy::multiple_unsafe_ops_per_block
   -A clippy::module_name_repetitions
   -A clippy::large_stack_arrays
@@ -91,18 +92,6 @@ cargo build --features "scenario_sleep"
 clippy_riscv "scenario_sleep" --features "scenario_sleep"
 
 echo
-echo "== Build RISC-V scenario_run =="
-cargo build --features "scenario_run"
-
-clippy_riscv "scenario_run" --features "scenario_run"
-
-echo
-echo "== Build RISC-V scenario_reentry =="
-cargo build --features "scenario_reentry"
-
-clippy_riscv "scenario_reentry" --features "scenario_reentry"
-
-echo
 echo "== Build RISC-V scenario_handoff =="
 cargo build --features "scenario_handoff"
 
@@ -133,10 +122,6 @@ scripts/test-timer-preemption-riscv.sh
 scripts/test-task-resume-selftest.sh
 scripts/test-task-sleep-riscv.sh
 scripts/test-task-sleep-runtime-e2e-riscv.sh
-scripts/test-scheduler-run-once-riscv.sh
-scripts/test-scheduler-run-riscv.sh
-scripts/test-scheduler-runtime-riscv.sh
-scripts/test-scheduler-reentry-riscv.sh
 scripts/test-two-task-handoff-riscv.sh
 scripts/test-scheduler-fault-lifecycle-riscv.sh
 scripts/test-kernel-fault-guard-riscv.sh

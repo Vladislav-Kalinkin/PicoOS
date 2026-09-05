@@ -1,12 +1,7 @@
-#[cfg(any(
-    feature = "scheduler_fault_lifecycle_test",
-    feature = "two_task_resume_handoff_test",
-    feature = "task_fault_test",
-    feature = "task_sleep_test"
-))]
+#[cfg(any(feature = "scenario_reap", feature = "scenario_sleep"))]
 use crate::drivers::uart;
 
-#[cfg(any(feature = "selftest", feature = "task_yield_test"))]
+#[cfg(feature = "scenario_reap")]
 pub fn print_task_zero_context_guard() {
     use crate::kernel::cpu::TrapExecutionContext;
 
@@ -28,11 +23,15 @@ pub fn print_task_zero_context_guard() {
     }
 }
 
-#[cfg(feature = "task_sleep_test")]
+#[cfg(feature = "scenario_sleep")]
 pub fn test_task_sleep_wakeup_table_selftest() {
     uart::write_line("task sleep table selftest:");
 
-    let task_id = 1usize;
+    let Some(task_id) = crate::kernel::task::table::create_task("sleep-probe", sleep_probe) else {
+        uart::write_line("task sleep wake result: FAILED");
+        crate::arch::halt();
+    };
+
     let started = crate::kernel::task::table::mark_task_started(task_id);
     uart::write_str("  mark started before sleep: ");
     crate::kernel::task::table::print_yes_no(started);
@@ -105,6 +104,9 @@ pub fn test_task_sleep_wakeup_table_selftest() {
         None => uart::write_line("none"),
     }
 
+    let finished = crate::kernel::task::table::mark_task_finished(task_id);
+    let reaped = crate::kernel::task::table::destroy(task_id);
+
     let no_image_ok = started
         && blocked
         && woke_early == 0
@@ -114,7 +116,9 @@ pub fn test_task_sleep_wakeup_table_selftest() {
         && state_ready
         && !can_resume_after_wake
         && return_kind_none
-        && resumable_after_wake.is_none();
+        && resumable_after_wake.is_none()
+        && finished
+        && reaped;
 
     if !no_image_ok {
         uart::write_line("task sleep wake result: FAILED");
@@ -125,18 +129,17 @@ pub fn test_task_sleep_wakeup_table_selftest() {
     test_task_sleep_wakeup_with_saved_image();
 }
 
-#[cfg(feature = "task_sleep_test")]
-fn sleep_image_probe() {
+#[cfg(feature = "scenario_sleep")]
+fn sleep_probe() {
     crate::arch::halt();
 }
 
 /// Wake must set `can_resume` from the saved image, not unconditionally.
-#[cfg(feature = "task_sleep_test")]
+#[cfg(feature = "scenario_sleep")]
 fn test_task_sleep_wakeup_with_saved_image() {
     uart::write_line("task sleep table selftest (saved image):");
 
-    let Some(task_id) = crate::kernel::task::table::create_task("sleep-img", sleep_image_probe)
-    else {
+    let Some(task_id) = crate::kernel::task::table::create_task("sleep-img", sleep_probe) else {
         uart::write_line("task sleep wake image result: FAILED");
         crate::arch::halt();
     };
@@ -152,20 +155,16 @@ fn test_task_sleep_wakeup_with_saved_image() {
 
     let started = crate::kernel::task::table::mark_task_started(task_id);
     let sp = stack_top.saturating_sub(16);
-    let pc = sleep_image_probe as *const () as u64;
+    let pc = sleep_probe as *const () as u64;
 
-    let image = crate::kernel::task::cpu_context::TaskCpuContext {
-        sp,
-        return_pc: pc,
-        resume_pc: pc,
-        ra: pc,
-        s: [0; 12],
-    };
+    let mut image = crate::kernel::trap_frame::TrapImage::empty();
+    image.gpr.sp = sp;
+    image.gpr.ra = pc;
+    image.mepc = pc;
 
     let injected = sp >= stack_start
         && sp < stack_top
-        && crate::kernel::task::table::set_task_cpu_context(task_id, image)
-        && crate::kernel::task::table::set_task_last_return_context(task_id, sp, 0, pc);
+        && crate::kernel::task::table::set_task_trap_image(task_id, &image);
 
     uart::write_str("  injected resume image: ");
     crate::kernel::task::table::print_yes_no(started && injected);
@@ -208,60 +207,5 @@ fn test_task_sleep_wakeup_with_saved_image() {
     } else {
         uart::write_line("task sleep wake image result: FAILED");
         crate::arch::halt();
-    }
-}
-
-#[cfg(feature = "scheduler_fault_lifecycle_test")]
-pub fn test_scheduler_fault_lifecycle_bootstrap() {
-    uart::write_line("scheduler fault lifecycle bootstrap:");
-    uart::write_line("bootstrap action: scheduler starts first fresh task");
-
-    crate::kernel::task::scheduler::set_current_task(0);
-
-    match crate::kernel::task::scheduler::run() {
-        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-            uart::write_line("scheduler fault lifecycle bootstrap result: no runnable task");
-        }
-        crate::kernel::task::scheduler::RunResult::Failed => {
-            uart::write_line("scheduler fault lifecycle bootstrap result: failed");
-        }
-    }
-}
-
-#[cfg(feature = "two_task_resume_handoff_test")]
-pub fn test_two_task_resume_handoff_bootstrap() {
-    uart::write_line("two-task handoff bootstrap:");
-    uart::write_line("bootstrap action: scheduler starts first fresh task");
-
-    crate::kernel::task::scheduler::set_current_task(0);
-
-    match crate::kernel::task::scheduler::run() {
-        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-            uart::write_line("two-task handoff bootstrap result: no runnable task");
-            crate::arch::halt();
-        }
-        crate::kernel::task::scheduler::RunResult::Failed => {
-            uart::write_line("two-task handoff bootstrap result: FAILED");
-            crate::arch::halt();
-        }
-    }
-}
-
-#[cfg(feature = "task_fault_test")]
-pub fn test_task_fault_bootstrap() {
-    uart::write_line("task fault bootstrap:");
-    uart::write_line("bootstrap action: scheduler starts first fresh task");
-
-    crate::kernel::task::scheduler::set_current_task(0);
-
-    match crate::kernel::task::scheduler::run() {
-        crate::kernel::task::scheduler::RunResult::NoRunnableTask => {
-            uart::write_line("task fault bootstrap result: no runnable task");
-            crate::arch::halt();
-        }
-        crate::kernel::task::scheduler::RunResult::Failed => {
-            uart::write_line("task fault bootstrap result: FAILED");
-            crate::arch::halt();
-        }
     }
 }

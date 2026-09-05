@@ -24,14 +24,43 @@ macro_rules! ecall {
 }
 
 /// U-mode stub: `ecall` only. Worker/trampoline Rust may call this, not UART.
+/// Compiled for the default image and for scenarios whose workers actually
+/// yield (resume / handoff / preempt).
+#[cfg(any(
+    feature = "scenario_resume",
+    feature = "scenario_handoff",
+    feature = "scenario_preempt",
+    not(any(
+        feature = "scenario_reap",
+        feature = "scenario_resume",
+        feature = "scenario_sleep",
+        feature = "scenario_handoff",
+        feature = "scenario_fault",
+        feature = "scenario_preempt",
+        feature = "scenario_kernel_fault"
+    ))
+))]
 pub fn u_sys_yield() {
+    // SAFETY: U-mode `ecall` with a defined syscall number; worker stack is live.
     unsafe {
         ecall!(SYS_YIELD);
     }
 }
 
-#[allow(dead_code)]
+#[cfg(any(
+    feature = "scenario_sleep",
+    not(any(
+        feature = "scenario_reap",
+        feature = "scenario_resume",
+        feature = "scenario_sleep",
+        feature = "scenario_handoff",
+        feature = "scenario_fault",
+        feature = "scenario_preempt",
+        feature = "scenario_kernel_fault"
+    ))
+))]
 pub fn u_sys_sleep(ticks: u64) {
+    // SAFETY: U-mode `ecall` with `a0` = sleep ticks; worker stack is live.
     unsafe {
         core::arch::asm!(
             ".option push",
@@ -48,6 +77,7 @@ pub fn u_sys_sleep(ticks: u64) {
 }
 
 pub fn u_sys_exit() -> ! {
+    // SAFETY: U-mode `ecall`; `halt` is unreachable if the kernel honors SYS_EXIT.
     unsafe {
         ecall!(SYS_EXIT);
         crate::arch::halt();
@@ -55,6 +85,7 @@ pub fn u_sys_exit() -> ! {
 }
 
 pub fn u_sys_log(bytes: &[u8]) {
+    // SAFETY: U-mode `ecall`; `a0`/`a1` point at this worker's slice.
     unsafe {
         core::arch::asm!(
             ".option push",
@@ -71,58 +102,47 @@ pub fn u_sys_log(bytes: &[u8]) {
     }
 }
 
-pub fn handle_ecall(frame: *const Riscv64TrapFrame) {
-    let (a7, a0, a1) = unsafe { ((*frame).a7, (*frame).a0, (*frame).a1) };
-
-    match a7 {
+pub fn handle_ecall(frame: &Riscv64TrapFrame) {
+    match frame.a7 {
         SYS_YIELD => sys_yield(frame),
-        SYS_SLEEP => sys_sleep(frame, a0),
+        SYS_SLEEP => sys_sleep(frame, frame.a0),
         SYS_EXIT => sys_exit(),
-        SYS_LOG => sys_log(frame, a0, a1),
-        _ => illegal_syscall(frame),
+        SYS_LOG => sys_log(frame.a0, frame.a1),
+        _ => illegal_syscall(),
     }
 }
 
-fn sys_yield(frame: *const Riscv64TrapFrame) -> ! {
+fn trap_image_after_ecall(frame: &Riscv64TrapFrame) -> TrapImage {
+    TrapImage::from_frame(
+        frame,
+        crate::arch::riscv64::cpu::mepc().wrapping_add(4),
+        crate::arch::riscv64::cpu::mstatus(),
+    )
+}
+
+fn sys_yield(frame: &Riscv64TrapFrame) -> ! {
     let Some(id) = cpu::current() else {
         crate::kernel::log::fail("sys", "yield with no current task");
         crate::arch::halt();
     };
 
-    let mepc = crate::arch::riscv64::cpu::mepc().wrapping_add(4);
-    let image = unsafe {
-        TrapImage::from_frame(
-            &*frame,
-            mepc,
-            crate::arch::riscv64::cpu::mstatus(),
-        )
-    };
+    let image = trap_image_after_ecall(frame);
     let _ = crate::kernel::task::table::save_preempted_trap_image(id, &image);
     crate::kernel::task::scheduler::note_default_image_return(
         crate::kernel::task::table::TaskReturnKind::Yield,
     );
 
-    switch_after_syscall(Some(id));
+    crate::kernel::task::scheduler::switch_after(Some(id));
 }
 
-fn sys_sleep(frame: *const Riscv64TrapFrame, ticks: u64) -> ! {
+fn sys_sleep(frame: &Riscv64TrapFrame, ticks: u64) -> ! {
     let Some(id) = cpu::current() else {
         crate::kernel::log::fail("sys", "sleep with no current task");
         crate::arch::halt();
     };
 
-    let mepc = crate::arch::riscv64::cpu::mepc().wrapping_add(4);
-    let image = unsafe {
-        TrapImage::from_frame(
-            &*frame,
-            mepc,
-            crate::arch::riscv64::cpu::mstatus(),
-        )
-    };
+    let image = trap_image_after_ecall(frame);
     let _ = crate::kernel::task::table::set_task_trap_image(id, &image);
-    let cpu_context = image.to_yield_context();
-    let _ = crate::kernel::task::table::set_task_cpu_context(id, cpu_context);
-    let _ = crate::kernel::task::table::set_task_last_return_context(id, image.gpr.sp, 0, mepc);
 
     let wake_tick = crate::kernel::ticks::get().saturating_add(ticks.max(1));
     if !crate::kernel::task::table::mark_task_blocked_until(id, wake_tick) {
@@ -134,7 +154,7 @@ fn sys_sleep(frame: *const Riscv64TrapFrame, ticks: u64) -> ! {
         crate::kernel::task::table::TaskReturnKind::Sleep,
     );
 
-    switch_after_syscall(Some(id));
+    crate::kernel::task::scheduler::switch_after(Some(id));
 }
 
 fn sys_exit() -> ! {
@@ -148,14 +168,16 @@ fn sys_exit() -> ! {
         crate::kernel::task::table::TaskReturnKind::Exit,
     );
     cpu::clear_current();
-    switch_after_syscall(Some(id));
+    crate::kernel::task::scheduler::switch_after(Some(id));
 }
 
-fn sys_log(frame: *const Riscv64TrapFrame, ptr: u64, len: u64) {
+fn sys_log(ptr: u64, len: u64) {
     if !user_buffer_ok(ptr, len) {
-        illegal_syscall(frame);
+        illegal_syscall();
     }
 
+    // SAFETY: `user_buffer_ok` accepted this range as the current worker
+    // stack or kernel `.rodata`.
     let bytes = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
     for &byte in bytes {
         uart::putc(byte);
@@ -166,10 +188,9 @@ fn sys_log(frame: *const Riscv64TrapFrame, ptr: u64, len: u64) {
     crate::arch::riscv64::cpu::set_mstatus(
         crate::arch::riscv64::cpu::synthesize_mstatus_for_mret_worker(),
     );
-    crate::kernel::cpu::set_in_trap(false);
 }
 
-fn illegal_syscall(_frame: *const Riscv64TrapFrame) -> ! {
+fn illegal_syscall() -> ! {
     crate::kernel::log::fail("sys", "illegal ecall");
     crate::kernel::task::fault::record_and_switch_user_fault(
         crate::arch::riscv64::cpu::mcause(),
@@ -192,27 +213,4 @@ fn user_buffer_ok(ptr: u64, len: u64) -> bool {
     ptr >= memory::rodata_start() && end <= memory::rodata_end()
 }
 
-pub fn switch_after_syscall(after: Option<usize>) -> ! {
-    let next = crate::kernel::task::scheduler::prepare_timer_switch(after);
-    if let Some(id) = after
-        && crate::kernel::task::table::is_terminal_task(id)
-    {
-        let _ = crate::kernel::task::table::destroy(id);
-    }
 
-    match next {
-        Some(id) => {
-            let fresh = crate::kernel::task::table::is_fresh_ready_task(id);
-            let Some(image) = (if fresh {
-                crate::kernel::task::scheduler::build_fresh_trap_image(id)
-            } else {
-                crate::kernel::task::scheduler::trap_image_for_resume(id)
-            }) else {
-                crate::arch::idle_exit_from_trap();
-            };
-            crate::kernel::task::scheduler::arm_worker_for_mret(id, fresh);
-            crate::arch::mret_to_trap_image(&image);
-        }
-        None => crate::arch::idle_exit_from_trap(),
-    }
-}

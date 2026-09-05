@@ -83,13 +83,6 @@ impl Riscv64TrapFrame {
             tp: 0,
         }
     }
-
-    pub const fn s_regs(self) -> [u64; 12] {
-        [
-            self.s0, self.s1, self.s2, self.s3, self.s4, self.s5, self.s6, self.s7, self.s8,
-            self.s9, self.s10, self.s11,
-        ]
-    }
 }
 
 /// Full resume image: GPRs plus the CSRs `trap.S` does not store.
@@ -118,37 +111,7 @@ impl TrapImage {
         }
     }
 
-    /// Build an mret image from a cooperative yield save (callee-saved only).
-    pub fn from_yield_context(ctx: crate::kernel::task::cpu_context::TaskCpuContext) -> Self {
-        let mut gpr = Riscv64TrapFrame::empty();
-        gpr.sp = ctx.sp;
-        gpr.ra = ctx.ra;
-        gpr.s0 = ctx.s[0];
-        gpr.s1 = ctx.s[1];
-        gpr.s2 = ctx.s[2];
-        gpr.s3 = ctx.s[3];
-        gpr.s4 = ctx.s[4];
-        gpr.s5 = ctx.s[5];
-        gpr.s6 = ctx.s[6];
-        gpr.s7 = ctx.s[7];
-        gpr.s8 = ctx.s[8];
-        gpr.s9 = ctx.s[9];
-        gpr.s10 = ctx.s[10];
-        gpr.s11 = ctx.s[11];
-        Self {
-            gpr,
-            mepc: ctx.resume_pc,
-            mstatus: 0,
-        }
-    }
-
-    pub fn to_yield_context(self) -> crate::kernel::task::cpu_context::TaskCpuContext {
-        crate::kernel::task::cpu_context::TaskCpuContext {
-            sp: self.gpr.sp,
-            return_pc: self.mepc,
-            resume_pc: self.mepc,
-            ra: self.gpr.ra,
-            s: self.gpr.s_regs(),
-        }
+    pub const fn is_valid(&self) -> bool {
+        self.gpr.sp != 0 && self.mepc != 0
     }
 }

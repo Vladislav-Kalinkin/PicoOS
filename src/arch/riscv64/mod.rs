@@ -8,14 +8,7 @@ pub mod traps;
 
 pub use cpu::without_interrupts;
 
-#[path = "yield.rs"]
-mod task_yield;
-
-pub use restore::{idle_exit_from_trap, mret_to_trap_image, restore_verified_resume_frame};
-
-pub use task_yield::capture_task_cpu_context;
-
-pub use task_yield::task_yield_boundary;
+pub use restore::{idle_exit_from_trap, mret_to_trap_image};
 
 core::arch::global_asm!(include_str!("boot.S"));
 core::arch::global_asm!(include_str!("trap.S"));
@@ -33,6 +26,7 @@ fn symbol_addr(symbol: *const u8) -> u64 {
 #[inline(always)]
 pub fn halt() -> ! {
     loop {
+        // SAFETY: `wfi` is valid in M-mode; this hart is parked until reset.
         unsafe {
             asm!("wfi", options(nomem, nostack, preserves_flags));
         }
@@ -59,10 +53,6 @@ pub(crate) fn trap_stack_top() -> u64 {
     symbol_addr(core::ptr::addr_of!(__trap_stack_top))
 }
 
-pub fn reset_trap_stack_pointer_for_next_trap() {
-    cpu::set_mscratch(trap_stack_top());
-}
-
 pub fn is_trap_stack_addr(addr: u64) -> bool {
     let top = trap_stack_top();
 
@@ -84,6 +74,7 @@ pub fn disable_irq() {
 
 #[inline(always)]
 pub fn wait_for_interrupt() {
+    // SAFETY: `wfi` is valid in M-mode idle.
     unsafe {
         asm!("wfi", options(nomem, nostack, preserves_flags));
     }
@@ -125,49 +116,4 @@ pub fn print_cpu_info() {
     crate::drivers::uart::write_line("");
 }
 
-#[allow(dead_code)]
-#[inline(never)]
-pub unsafe fn start_task_on_stack(entry: usize, stack_top: u64) -> ! {
-    unsafe {
-        asm!(
-        "mv sp, {stack}",
-        "mv a0, {entry}",
-        "call {trampoline}",
-        stack = in(reg) stack_top,
-        entry = in(reg) entry,
-        trampoline = sym crate::kernel::task::task_trampoline_raw,
-        options(noreturn)
-        );
-    }
-}
 
-#[inline(always)]
-pub fn stack_pointer() -> u64 {
-    cpu::stack_pointer()
-}
-
-#[inline(never)]
-pub unsafe fn return_to_kernel_stack(kernel_sp: u64, return_pc: u64) -> ! {
-    unsafe {
-        asm!(
-        "mv sp, {kernel_sp}",
-        "jr {return_pc}",
-        kernel_sp = in(reg) kernel_sp,
-        return_pc = in(reg) return_pc,
-        options(noreturn)
-        );
-    }
-}
-
-pub fn return_to_kernel_stack_checked(kernel_sp: u64, return_pc: u64) -> ! {
-    if kernel_sp == 0 || !crate::kernel::memory::is_inside_kernel_text(return_pc) {
-        crate::drivers::uart::write_line("invalid kernel return context");
-        crate::arch::halt();
-    }
-
-    reset_trap_stack_pointer_for_next_trap();
-
-    unsafe {
-        return_to_kernel_stack(kernel_sp, return_pc);
-    }
-}

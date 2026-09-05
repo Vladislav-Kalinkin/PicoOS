@@ -1,32 +1,13 @@
 #![no_std]
 #![no_main]
-// Test/scenario features compile helpers that the other `kernel_main` path
-// does not call. Default (no features) still denies unused code.
+// Truncated boots: reap never calls `arch::init` / `scheduler::run`,
+// kernel-fault `ebreak`s before the scheduler. The always-on kernel stays
+// compiled; unused here is the short path, not leftover dual-mode code.
 #![cfg_attr(
-    any(
-        feature = "selftest",
-        feature = "task_yield_test",
-        feature = "two_yield_task_test",
-        feature = "scheduler_resume_loop_test",
-        feature = "verbose_resume_debug",
-        feature = "scheduler_dispatch_test",
-        feature = "scheduler_run_test",
-        feature = "scheduler_reentry_test",
-        feature = "two_task_resume_handoff_test",
-        feature = "task_fault_test",
-        feature = "kernel_fault_guard_test",
-        feature = "scheduler_verbose_dispatch_trace",
-        feature = "task_sleep_test",
-        feature = "task_sleep_runtime_e2e_test",
-        feature = "kernel_log_scoped",
-        feature = "log_trap",
-        feature = "log_timer",
-        feature = "log_fault",
-        feature = "log_sleep",
-        feature = "scheduler_fault_lifecycle_test"
-    ),
-    allow(dead_code, unused_imports, unreachable_code)
+    any(feature = "scenario_reap", feature = "scenario_kernel_fault"),
+    allow(dead_code, unused_imports)
 )]
+#![cfg_attr(feature = "scenario_kernel_fault", allow(unreachable_code))]
 
 use core::panic::PanicInfo;
 
@@ -49,40 +30,27 @@ pub extern "C" fn kernel_main() -> ! {
     uart::write_line("status: kernel started");
     kernel::banner::print_capabilities();
 
-    #[cfg(feature = "selftest")]
+    #[cfg(feature = "scenario_reap")]
     {
         kernel::test::run_selftests();
     }
 
-    #[cfg(not(feature = "selftest"))]
+    #[cfg(not(feature = "scenario_reap"))]
     {
         arch::init_exceptions();
         arch::pmp::init();
         arch::print_cpu_info();
 
-        #[cfg(any(feature = "task_yield_test", feature = "kernel_fault_guard_test"))]
-        {
-            kernel::test::run_runtime_selftest_bootstrap();
-            kernel::task::scheduler::init();
-            kernel::test::run_runtime_selftest_after_scheduler_init();
-            start_timer_and_wait();
-        }
+        #[cfg(feature = "scenario_kernel_fault")]
+        kernel::test::run_kernel_fault_guard();
 
-        #[cfg(not(any(feature = "task_yield_test", feature = "kernel_fault_guard_test")))]
+        #[cfg(not(feature = "scenario_kernel_fault"))]
         {
             kernel::test::run_memory_tests();
             kernel::task::test::spawn_default_image();
             kernel::task::scheduler::switch_to_idle();
             arm_timer();
-            match kernel::task::scheduler::run() {
-                kernel::task::scheduler::RunResult::NoRunnableTask => {
-                    kernel::task::scheduler::idle_loop();
-                }
-                kernel::task::scheduler::RunResult::Failed => {
-                    uart::write_line("default scheduler: FAILED");
-                    arch::halt();
-                }
-            }
+            kernel::task::scheduler::run();
         }
     }
 }
@@ -123,15 +91,6 @@ fn arm_timer() {
     uart::write_str("mie after enable: ");
     uart::write_hex_u64(cpu::mie());
     uart::write_line("");
-}
-
-#[cfg(any(feature = "task_yield_test", feature = "kernel_fault_guard_test"))]
-fn start_timer_and_wait() -> ! {
-    arm_timer();
-    uart::write_line("waiting for RISC-V ticks...");
-    loop {
-        arch::wait_for_interrupt();
-    }
 }
 
 static PANICKING: crate::kernel::irq_cell::IrqCell<bool> =

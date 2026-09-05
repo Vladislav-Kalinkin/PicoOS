@@ -7,6 +7,58 @@ pub const MSTATUS_MPP_M: u64 = 0b11 << 11;
 pub const MSTATUS_MPP_U: u64 = 0;
 pub const MSTATUS_MPRV: u64 = 1 << 17;
 pub const MSTATUS_FS: u64 = 0b11 << 13;
+pub const MIE_MTIE: u64 = 1 << 7;
+
+macro_rules! csr_read {
+    ($name:ident, $csr:literal) => {
+        #[inline(always)]
+        pub fn $name() -> u64 {
+            let value: u64;
+            // SAFETY: M-mode `csrr`; `$csr` is a valid CSR encoded in the instruction.
+            unsafe {
+                asm!(
+                    concat!("csrr {0}, ", $csr),
+                    out(reg) value,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            value
+        }
+    };
+}
+
+macro_rules! csr_write {
+    ($name:ident, $csr:literal) => {
+        #[inline(always)]
+        pub fn $name(value: u64) {
+            // SAFETY: M-mode `csrw`; `$csr` is a valid CSR encoded in the instruction.
+            unsafe {
+                asm!(
+                    concat!("csrw ", $csr, ", {0}"),
+                    in(reg) value,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    };
+}
+
+macro_rules! csr_rw {
+    ($read:ident, $write:ident, $csr:literal) => {
+        csr_read!($read, $csr);
+        csr_write!($write, $csr);
+    };
+}
+
+csr_read!(mhartid, "mhartid");
+csr_rw!(mstatus, set_mstatus, "mstatus");
+csr_rw!(mtvec, set_mtvec, "mtvec");
+csr_rw!(mepc, set_mepc, "mepc");
+csr_read!(mcause, "mcause");
+csr_read!(mie, "mie");
+csr_read!(mip, "mip");
+csr_read!(mtval, "mtval");
+csr_write!(set_mscratch, "mscratch");
 
 /// Run `f` with `mstatus.MIE` clear. Restores the previous MIE bit (does not
 /// force MIE=1). Nestable: an inner call that starts with MIE already clear
@@ -21,111 +73,11 @@ pub fn without_interrupts<T>(f: impl FnOnce() -> T) -> T {
     result
 }
 
-#[inline(always)]
-pub fn mhartid() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mhartid",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    value
-}
-
-#[inline(always)]
-pub fn mstatus() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mstatus",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    value
-}
-
-#[inline(always)]
-pub fn mtvec() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mtvec",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    value
-}
-
-#[inline(always)]
-pub fn mepc() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mepc",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    value
-}
-
-#[inline(always)]
-pub fn set_mepc(value: u64) {
-    unsafe {
-        asm!(
-            "csrw mepc, {0}",
-            in(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-}
-
-#[inline(always)]
-pub fn set_mstatus(value: u64) {
-    unsafe {
-        asm!(
-            "csrw mstatus, {0}",
-            in(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-}
-
 fn worker_mpp() -> u64 {
-    // Feature-gated selftests still execute workers in M-mode (UART from the
-    // task, function-call yield). Default image is U-mode (PR19).
-    #[cfg(any(
-        feature = "task_yield_test",
-        feature = "kernel_fault_guard_test",
-        feature = "selftest"
-    ))]
-    {
-        MSTATUS_MPP_M
-    }
-    #[cfg(not(any(
-        feature = "task_yield_test",
-        feature = "kernel_fault_guard_test",
-        feature = "selftest"
-    )))]
-    {
-        MSTATUS_MPP_U
-    }
+    MSTATUS_MPP_U
 }
 
-/// Worker `mret`: `MIE=0`, `MPIE=1`, `MPRV=0`. `MPP` is U on the default
-/// image and M for resume/fault selftests. Never copy saved `mstatus`.
+/// Worker `mret`: `MIE=0`, `MPIE=1`, `MPRV=0`, `MPP=U`. Never copy saved `mstatus`.
 pub fn synthesize_mstatus_for_mret_worker() -> u64 {
     let current = mstatus();
     let fs = current & MSTATUS_FS;
@@ -152,54 +104,9 @@ pub fn synthesize_mstatus_for_idle() -> u64 {
 }
 
 #[inline(always)]
-pub fn mcause() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mcause",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    value
-}
-
-#[inline(always)]
-pub fn mie() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mie",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    value
-}
-
-#[inline(always)]
-pub fn mip() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mip",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
-    value
-}
-
-#[inline(always)]
 pub fn stack_pointer() -> u64 {
     let value: u64;
-
+    // SAFETY: Reads `sp`; does not change memory or control state.
     unsafe {
         asm!(
             "mv {0}, sp",
@@ -207,101 +114,31 @@ pub fn stack_pointer() -> u64 {
             options(nomem, nostack, preserves_flags)
         );
     }
-
-    value
-}
-
-#[inline(always)]
-pub fn set_mtvec(addr: u64) {
-    unsafe {
-        asm!(
-            "csrw mtvec, {0}",
-            in(reg) addr,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-}
-
-#[inline(always)]
-pub fn set_mscratch(value: u64) {
-    unsafe {
-        asm!(
-            "csrw mscratch, {0}",
-            in(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-}
-
-#[inline(always)]
-pub fn mtval() -> u64 {
-    let value: u64;
-
-    unsafe {
-        asm!(
-            "csrr {0}, mtval",
-            out(reg) value,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-
     value
 }
 
 #[inline(always)]
 pub fn enable_machine_interrupts() {
+    // SAFETY: M-mode `csrs mstatus.MIE`.
     unsafe {
-        asm!("li t0, 0x8", "csrs mstatus, t0", options(nomem, nostack));
+        asm!("csrs mstatus, {0}", in(reg) MSTATUS_MIE, options(nomem, nostack));
     }
 }
 
 #[inline(always)]
 pub fn disable_machine_interrupts() {
+    // SAFETY: M-mode `csrc mstatus.MIE`.
     unsafe {
-        asm!("li t0, 0x8", "csrc mstatus, t0", options(nomem, nostack));
+        asm!("csrc mstatus, {0}", in(reg) MSTATUS_MIE, options(nomem, nostack));
     }
 }
 
 #[inline(always)]
 pub fn enable_machine_timer_interrupt() {
+    // SAFETY: M-mode `csrs mie.MTIE`.
     unsafe {
-        asm!("li t0, 0x80", "csrs mie, t0", options(nomem, nostack));
+        asm!("csrs mie, {0}", in(reg) MIE_MTIE, options(nomem, nostack));
     }
-}
-
-#[inline(always)]
-pub fn disable_machine_timer_interrupt() {
-    unsafe {
-        asm!("li t0, 0x80", "csrc mie, t0", options(nomem, nostack));
-    }
-}
-
-macro_rules! csr_rw {
-    ($read:ident, $write:ident, $csr:literal) => {
-        #[inline(always)]
-        pub fn $read() -> u64 {
-            let value: u64;
-            unsafe {
-                asm!(
-                    concat!("csrr {0}, ", $csr),
-                    out(reg) value,
-                    options(nomem, nostack, preserves_flags)
-                );
-            }
-            value
-        }
-
-        #[inline(always)]
-        pub fn $write(value: u64) {
-            unsafe {
-                asm!(
-                    concat!("csrw ", $csr, ", {0}"),
-                    in(reg) value,
-                    options(nomem, nostack, preserves_flags)
-                );
-            }
-        }
-    };
 }
 
 csr_rw!(pmpcfg0, set_pmpcfg0, "pmpcfg0");
