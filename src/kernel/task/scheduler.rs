@@ -46,7 +46,7 @@ fn build_fresh_trap_image(task_id: usize) -> Option<TrapImage> {
     let mut image = TrapImage::empty();
     image.gpr.sp = stack_top;
     image.gpr.a0 = entry as *const () as usize as u64;
-    image.mepc = crate::kernel::task::entry::task_trampoline_raw as *const () as usize as u64;
+    image.mepc = crate::user::user_trampoline as *const () as usize as u64;
     Some(image)
 }
 
@@ -181,3 +181,5 @@ fn try_print_scenario_markers() {
         uart::write_line(line);
     }
 }
+
+const _: fn(usize) = print_task_name;

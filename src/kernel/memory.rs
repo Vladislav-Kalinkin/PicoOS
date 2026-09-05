@@ -18,6 +18,9 @@ unsafe extern "C" {
     static __text_start: u8;
     static __text_end: u8;
 
+    static __user_text_start: u8;
+    static __user_text_end: u8;
+
     static __rodata_start: u8;
     static __rodata_end: u8;
 
@@ -239,6 +242,14 @@ pub fn text_end() -> u64 {
     symbol_addr(core::ptr::addr_of!(__text_end))
 }
 
+pub fn user_text_start() -> u64 {
+    symbol_addr(core::ptr::addr_of!(__user_text_start))
+}
+
+pub fn user_text_end() -> u64 {
+    symbol_addr(core::ptr::addr_of!(__user_text_end))
+}
+
 pub fn rodata_start() -> u64 {
     symbol_addr(core::ptr::addr_of!(__rodata_start))
 }
@@ -283,12 +294,17 @@ pub fn is_inside_kernel_text(addr: u64) -> bool {
     addr >= kernel_text_start() && addr < kernel_text_end()
 }
 
+pub fn is_inside_user_text(addr: u64) -> bool {
+    addr >= user_text_start() && addr < user_text_end()
+}
+
 pub fn print_memory_layout() {
     uart::write_line("");
     uart::write_line("memory layout:");
 
     print_range("kernel", kernel_start(), kernel_end());
     print_range("text", text_start(), text_end());
+    print_range("usertext", user_text_start(), user_text_end());
     print_range("rodata", rodata_start(), rodata_end());
     print_range("data", data_start(), data_end());
     print_range("bss", bss_start(), bss_end());

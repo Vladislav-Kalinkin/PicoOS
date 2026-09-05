@@ -8,98 +8,10 @@ pub const SYS_SLEEP: u64 = 1;
 pub const SYS_EXIT: u64 = 2;
 pub const SYS_LOG: u64 = 3;
 
-macro_rules! ecall {
-    ($a7:expr) => {
-        core::arch::asm!(
-            ".option push",
-            ".option norvc",
-            "li a7, {nr}",
-            "ecall",
-            ".option pop",
-            nr = const $a7,
-            lateout("a7") _,
-            options(nomem, nostack)
-        );
-    };
-}
-
-/// U-mode stub: `ecall` only. Worker/trampoline Rust may call this, not UART.
-/// Compiled for the default image and for scenarios whose workers actually
-/// yield (resume / handoff / preempt).
-#[cfg(any(
-    feature = "scenario_resume",
-    feature = "scenario_handoff",
-    feature = "scenario_preempt",
-    not(any(
-        feature = "scenario_reap",
-        feature = "scenario_resume",
-        feature = "scenario_sleep",
-        feature = "scenario_handoff",
-        feature = "scenario_fault",
-        feature = "scenario_preempt",
-        feature = "scenario_kernel_fault"
-    ))
-))]
-pub fn u_sys_yield() {
-    // SAFETY: U-mode `ecall` with a defined syscall number; worker stack is live.
-    unsafe {
-        ecall!(SYS_YIELD);
-    }
-}
-
-#[cfg(any(
-    feature = "scenario_sleep",
-    not(any(
-        feature = "scenario_reap",
-        feature = "scenario_resume",
-        feature = "scenario_sleep",
-        feature = "scenario_handoff",
-        feature = "scenario_fault",
-        feature = "scenario_preempt",
-        feature = "scenario_kernel_fault"
-    ))
-))]
-pub fn u_sys_sleep(ticks: u64) {
-    // SAFETY: U-mode `ecall` with `a0` = sleep ticks; worker stack is live.
-    unsafe {
-        core::arch::asm!(
-            ".option push",
-            ".option norvc",
-            "li a7, {nr}",
-            "ecall",
-            ".option pop",
-            nr = const SYS_SLEEP,
-            in("a0") ticks,
-            lateout("a7") _,
-            options(nomem, nostack)
-        );
-    }
-}
-
-pub fn u_sys_exit() -> ! {
-    // SAFETY: U-mode `ecall`; `halt` is unreachable if the kernel honors SYS_EXIT.
-    unsafe {
-        ecall!(SYS_EXIT);
-        crate::arch::halt();
-    }
-}
-
-pub fn u_sys_log(bytes: &[u8]) {
-    // SAFETY: U-mode `ecall`; `a0`/`a1` point at this worker's slice.
-    unsafe {
-        core::arch::asm!(
-            ".option push",
-            ".option norvc",
-            "li a7, {nr}",
-            "ecall",
-            ".option pop",
-            nr = const SYS_LOG,
-            in("a0") bytes.as_ptr(),
-            in("a1") bytes.len(),
-            lateout("a7") _,
-            options(nostack)
-        );
-    }
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub extern "C" fn kernel_fetch_probe_target() {
+    crate::arch::halt();
 }
 
 pub fn handle_ecall(frame: &Riscv64TrapFrame) {
@@ -212,5 +124,3 @@ fn user_buffer_ok(ptr: u64, len: u64) -> bool {
 
     ptr >= memory::rodata_start() && end <= memory::rodata_end()
 }
-
-

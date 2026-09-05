@@ -1,6 +1,5 @@
 use crate::kernel::irq_cell::IrqCell;
 
-#[cfg(any(feature = "scenario_reap", feature = "scenario_kernel_fault"))]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TrapExecutionContext {
     Kernel,
@@ -39,7 +38,6 @@ pub fn clear_current() {
     CPU.with(|cpu| cpu.current = None);
 }
 
-#[cfg(any(feature = "scenario_reap", feature = "scenario_kernel_fault"))]
 pub fn trap_execution_context() -> TrapExecutionContext {
     if current().is_some() {
         TrapExecutionContext::Task
@@ -48,7 +46,6 @@ pub fn trap_execution_context() -> TrapExecutionContext {
     }
 }
 
-#[cfg(feature = "scenario_kernel_fault")]
 pub fn print_trap_execution_context() {
     match trap_execution_context() {
         TrapExecutionContext::Kernel => {
@@ -82,3 +79,5 @@ pub fn set_current_stack_bounds(start: u64, top: u64) {
         cpu.current_stack_top = top;
     });
 }
+
+const _: fn() = print_trap_execution_context;

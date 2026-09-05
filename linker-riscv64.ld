@@ -10,8 +10,16 @@ SECTIONS
         __text_start = .;
         KEEP(*(.text.boot))
         KEEP(*(.text.trap))
-        *(.text*)
+        *(.text .text.*)
         __text_end = .;
+    }
+
+    .usertext : ALIGN(4K) {
+        __user_text_start = .;
+        . += 4;
+        KEEP(*(.usertext .usertext.*))
+        . = ALIGN(4);
+        __user_text_end = .;
     }
 
     .rodata : ALIGN(4K) {

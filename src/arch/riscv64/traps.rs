@@ -4,7 +4,7 @@ use crate::arch::riscv64::timer;
 use crate::drivers::uart;
 use crate::kernel::trap_frame::{Riscv64TrapFrame, TrapImage};
 
-const TIMER_HZ: u64 = 1;
+const TIMER_HZ: u64 = 100;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
@@ -101,39 +101,16 @@ fn handle_timer_interrupt(frame: &Riscv64TrapFrame) -> ! {
 
     let tick = crate::kernel::ticks::increment();
     let woke_tasks = crate::kernel::task::wake_sleeping_tasks(tick);
-
-    uart::write_str("tick: ");
-    uart::write_dec_u64(tick);
-
-    uart::write_str(" saved current: ");
-    match interrupted_worker {
-        Some(id) => {
-            crate::kernel::task::scheduler::print_task_name(id);
-            crate::kernel::task::print_task_context_values(saved_sp, saved_pc);
-        }
-        None => uart::write_str("none"),
-    }
-
     let next = crate::kernel::task::scheduler::next_after(interrupted_worker);
 
-    uart::write_str(" decision next: ");
-    match next {
-        Some(id) => crate::kernel::task::scheduler::print_task_name(id),
-        None => uart::write_str("idle"),
-    }
-
-    uart::write_str(" mode: mret");
-    uart::write_str(" woke: ");
-    uart::write_dec_u64(woke_tasks as u64);
-
-    uart::write_str(" context:");
-    match crate::kernel::task::scheduler::current_task_id() {
-        Some(id) => crate::kernel::task::print_task_full_context_by_id(id),
-        None => uart::write_str(" none"),
-    }
-
-    uart::write_line("");
-    crate::kernel::log::info("timer", "scheduler decision computed");
+    print_timer_tick_if_verbose(
+        tick,
+        woke_tasks,
+        interrupted_worker,
+        saved_sp,
+        saved_pc,
+        next,
+    );
 
     timer::arm_timer_hz(TIMER_HZ);
 
@@ -144,6 +121,61 @@ fn handle_timer_interrupt(frame: &Riscv64TrapFrame) -> ! {
     }
 
     crate::kernel::task::scheduler::switch_to(next);
+}
+
+fn print_timer_tick_if_verbose(
+    tick: u64,
+    woke_tasks: usize,
+    interrupted_worker: Option<usize>,
+    saved_sp: u64,
+    saved_pc: u64,
+    next: Option<usize>,
+) {
+    #[cfg(feature = "scenario_preempt")]
+    {
+        uart::write_str("tick: ");
+        uart::write_dec_u64(tick);
+
+        uart::write_str(" saved current: ");
+        match interrupted_worker {
+            Some(id) => {
+                crate::kernel::task::scheduler::print_task_name(id);
+                crate::kernel::task::print_task_context_values(saved_sp, saved_pc);
+            }
+            None => uart::write_str("none"),
+        }
+
+        uart::write_str(" decision next: ");
+        match next {
+            Some(id) => crate::kernel::task::scheduler::print_task_name(id),
+            None => uart::write_str("idle"),
+        }
+
+        uart::write_str(" mode: mret");
+        uart::write_str(" woke: ");
+        uart::write_dec_u64(woke_tasks as u64);
+
+        uart::write_str(" context:");
+        match crate::kernel::task::scheduler::current_task_id() {
+            Some(id) => crate::kernel::task::print_task_full_context_by_id(id),
+            None => uart::write_str(" none"),
+        }
+
+        uart::write_line("");
+        crate::kernel::log::info("timer", "scheduler decision computed");
+    }
+
+    #[cfg(not(feature = "scenario_preempt"))]
+    {
+        let _ = (
+            tick,
+            woke_tasks,
+            interrupted_worker,
+            saved_sp,
+            saved_pc,
+            next,
+        );
+    }
 }
 
 fn print_trap_cause(cause: u64) {

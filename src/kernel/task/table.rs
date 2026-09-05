@@ -38,6 +38,11 @@ pub enum TaskLifecycleTransition {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BlockReason {
+    SleepUntil(u64),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TaskFaultReason {
     Breakpoint,
     InstructionAccessFault,
@@ -76,7 +81,7 @@ pub struct Task {
     pub has_started: bool,
     pub can_resume: bool,
     pub last_return_kind: TaskReturnKind,
-    pub sleep_until_tick: Option<u64>,
+    pub block: Option<BlockReason>,
 }
 
 impl Task {
@@ -94,7 +99,7 @@ impl Task {
             has_started: false,
             can_resume: false,
             last_return_kind: TaskReturnKind::None,
-            sleep_until_tick: None,
+            block: None,
         }
     }
 }
@@ -455,7 +460,6 @@ pub fn can_task_resume(id: usize) -> Option<bool> {
     with_task(id, |task| task.can_resume)
 }
 
-#[cfg(feature = "scenario_sleep")]
 pub fn find_first_resumable_task() -> Option<usize> {
     for task in snapshot_tasks() {
         if matches!(task.state, TaskState::Ready) && is_resumable_task(task.id) {
@@ -512,7 +516,7 @@ pub fn is_resume_frame_safe_for_task(id: usize) -> bool {
 
     image.is_valid()
         && matches!(is_sp_inside_task_stack(id, image.gpr.sp), Some(true))
-        && memory::is_inside_kernel_text(image.mepc)
+        && memory::is_inside_user_text(image.mepc)
 }
 
 pub fn is_fresh_ready_task(id: usize) -> bool {
@@ -585,7 +589,7 @@ pub fn mark_task_ready_after_yield(id: usize) -> bool {
         task.state = TaskState::Ready;
         task.last_return_kind = TaskReturnKind::Yield;
         task.can_resume = true;
-        task.sleep_until_tick = None;
+        task.block = None;
         true
     })
     .unwrap_or(false)
@@ -600,7 +604,7 @@ pub fn mark_task_blocked_until(id: usize, wake_tick: u64) -> bool {
         task.state = TaskState::Blocked;
         task.last_return_kind = TaskReturnKind::Sleep;
         task.can_resume = false;
-        task.sleep_until_tick = Some(wake_tick);
+        task.block = Some(BlockReason::SleepUntil(wake_tick));
         true
     })
     .unwrap_or(false)
@@ -615,13 +619,13 @@ pub fn wake_sleeping_tasks(current_tick: u64) -> usize {
             continue;
         }
 
-        let Some(wake_tick) = task.sleep_until_tick else {
+        let Some(BlockReason::SleepUntil(wake_tick)) = task.block else {
             continue;
         };
 
         if current_tick >= wake_tick {
             task.state = TaskState::Ready;
-            task.sleep_until_tick = None;
+            task.block = None;
             due[slot] = true;
         }
     }
@@ -694,3 +698,6 @@ fn free_task_stack_page(stack_start: u64) {
         memory::free_pages(page, 1);
     }
 }
+
+const _: fn(u64, u64) = print_task_context_values;
+const _: fn(usize) = print_task_full_context_by_id;

@@ -74,6 +74,10 @@ echo "== Build RISC-V =="
 cargo build
 
 echo
+echo "== usertext symbol contract =="
+scripts/check-usertext.sh
+
+echo
 echo "== Build RISC-V scenario_reap =="
 cargo build --features "scenario_reap"
 

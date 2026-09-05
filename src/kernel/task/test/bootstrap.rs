@@ -1,7 +1,5 @@
-#[cfg(any(feature = "scenario_reap", feature = "scenario_sleep"))]
 use crate::drivers::uart;
 
-#[cfg(feature = "scenario_reap")]
 pub fn print_task_zero_context_guard() {
     use crate::kernel::cpu::TrapExecutionContext;
 
@@ -23,7 +21,6 @@ pub fn print_task_zero_context_guard() {
     }
 }
 
-#[cfg(feature = "scenario_sleep")]
 pub fn test_task_sleep_wakeup_table_selftest() {
     uart::write_line("task sleep table selftest:");
 
@@ -129,13 +126,11 @@ pub fn test_task_sleep_wakeup_table_selftest() {
     test_task_sleep_wakeup_with_saved_image();
 }
 
-#[cfg(feature = "scenario_sleep")]
 fn sleep_probe() {
     crate::arch::halt();
 }
 
 /// Wake must set `can_resume` from the saved image, not unconditionally.
-#[cfg(feature = "scenario_sleep")]
 fn test_task_sleep_wakeup_with_saved_image() {
     uart::write_line("task sleep table selftest (saved image):");
 
@@ -155,7 +150,7 @@ fn test_task_sleep_wakeup_with_saved_image() {
 
     let started = crate::kernel::task::table::mark_task_started(task_id);
     let sp = stack_top.saturating_sub(16);
-    let pc = sleep_probe as *const () as u64;
+    let pc = crate::user::user_trampoline as *const () as usize as u64;
 
     let mut image = crate::kernel::trap_frame::TrapImage::empty();
     image.gpr.sp = sp;
@@ -209,3 +204,5 @@ fn test_task_sleep_wakeup_with_saved_image() {
         crate::arch::halt();
     }
 }
+
+const _: &[fn()] = &[print_task_zero_context_guard, test_task_sleep_wakeup_table_selftest];

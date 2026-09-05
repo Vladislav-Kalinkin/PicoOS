@@ -15,6 +15,7 @@ mod arch;
 mod drivers;
 mod kernel;
 mod platform;
+mod user;
 
 use crate::drivers::uart;
 
@@ -58,7 +59,7 @@ pub extern "C" fn kernel_main() -> ! {
 fn arm_timer() {
     use crate::arch::riscv64::{cpu, timer};
 
-    const RISCV_TIMER_HZ: u64 = 1;
+    const RISCV_TIMER_HZ: u64 = 100;
 
     uart::write_line("");
     uart::write_line("RISC-V timer:");

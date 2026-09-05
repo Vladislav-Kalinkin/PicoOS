@@ -18,8 +18,9 @@ const PMP_A_NAPOT: u64 = 3 << 3;
 /// - NAPOT 4 KiB at 4 KiB-aligned `base`: `(base >> 2) | 0x1FF`, `A=NAPOT`.
 ///   Not `base >> 2` alone (that is TOR).
 ///
-/// Layout: pmp0 TOR-deny `[0, __text_start)`, pmp1 TOR RX `.text`, pmp2 TOR R
-/// `.rodata`, pmp3 NAPOT current stack (retargeted on switch).
+/// Layout: pmp0 TOR-deny `[0, __text_start)`, pmp1 TOR-deny through
+/// `__user_text_start` (kernel `.text` and the 4K align gap), pmp2 TOR RX
+/// `.usertext`, pmp3 TOR R `.rodata`, pmp4 NAPOT current stack.
 pub fn init() {
     cpu::set_pmpcfg0(0);
     cpu::set_pmpcfg2(0);
@@ -29,22 +30,32 @@ pub fn init() {
     }
 
     cpu::set_pmpaddr(0, memory::text_start() >> 2);
-    cpu::set_pmpaddr(1, memory::text_end() >> 2);
-    cpu::set_pmpaddr(2, memory::rodata_end() >> 2);
-    cpu::set_pmpaddr(3, 0);
+    cpu::set_pmpaddr(1, memory::user_text_start() >> 2);
+    cpu::set_pmpaddr(2, tor_pmpaddr(memory::user_text_end()));
+    cpu::set_pmpaddr(3, tor_pmpaddr(memory::rodata_end()));
+    cpu::set_pmpaddr(4, 0);
 
     let pmp0 = PMP_A_TOR;
-    let pmp1 = PMP_R | PMP_X | PMP_A_TOR;
-    let pmp2 = PMP_R | PMP_A_TOR;
-    let pmp3 = PMP_R | PMP_W | PMP_A_NAPOT;
-    cpu::set_pmpcfg0(pmp0 | (pmp1 << 8) | (pmp2 << 16) | (pmp3 << 24));
+    let pmp1 = PMP_A_TOR;
+    let pmp2 = PMP_R | PMP_X | PMP_A_TOR;
+    let pmp3 = PMP_R | PMP_A_TOR;
+    let pmp4 = PMP_R | PMP_W | PMP_A_NAPOT;
+    cpu::set_pmpcfg0(
+        pmp0 | (pmp1 << 8) | (pmp2 << 16) | (pmp3 << 24) | (pmp4 << 32),
+    );
     cpu::set_pmpcfg2(0);
 
     dump();
 }
 
 pub fn set_current_stack(stack_start: u64) {
-    cpu::set_pmpaddr(3, (stack_start >> 2) | 0x1FF);
+    cpu::set_pmpaddr(4, (stack_start >> 2) | 0x1FF);
+}
+
+/// TOR `pmpaddr` is `end >> 2`. Round `end` up so a non-aligned section tail
+/// stays inside the region (`>> 2` alone would drop the last 1–3 bytes).
+const fn tor_pmpaddr(end: u64) -> u64 {
+    end.div_ceil(4)
 }
 
 unsafe extern "C" {
@@ -54,7 +65,13 @@ unsafe extern "C" {
 
 fn dump() {
     uart::write_line("");
-    uart::write_line("PMP (TOR text/rodata, NAPOT stack):");
+    uart::write_line("PMP (TOR usertext/rodata, NAPOT stack):");
+
+    uart::write_str("user text: ");
+    uart::write_hex_u64(memory::user_text_start());
+    uart::write_str(" - ");
+    uart::write_hex_u64(memory::user_text_end());
+    uart::write_line("");
 
     uart::write_str("trap stack: ");
     uart::write_hex_u64(core::ptr::addr_of!(__trap_stack_bottom) as u64);

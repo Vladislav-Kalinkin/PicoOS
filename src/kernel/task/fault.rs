@@ -1,4 +1,7 @@
 use crate::drivers::uart;
+use crate::kernel::irq_cell::IrqCell;
+
+static USER_TEXT_FETCH_DENY_PRINTED: IrqCell<bool> = IrqCell::new(false);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TrapFaultClassification {
@@ -27,7 +30,6 @@ pub fn classify_current_trap_fault() -> TrapFaultClassification {
     TrapFaultClassification::TaskFault
 }
 
-#[cfg(feature = "scenario_kernel_fault")]
 pub fn print_current_trap_fault_classification() {
     uart::write_line("trap fault classification:");
 
@@ -99,12 +101,30 @@ pub fn record_and_switch_user_fault(mcause: u64, mepc: u64, mtval: u64) -> ! {
         crate::arch::halt();
     }
 
+    let reason = crate::kernel::task::table::TaskFaultReason::from_mcause(
+        mcause & 0x7FFF_FFFF_FFFF_FFFF,
+    );
     if matches!(
-        crate::kernel::task::table::TaskFaultReason::from_mcause(mcause & 0x7FFF_FFFF_FFFF_FFFF),
+        reason,
         crate::kernel::task::table::TaskFaultReason::StoreAccessFault
             | crate::kernel::task::table::TaskFaultReason::LoadAccessFault
     ) {
         crate::drivers::uart::write_line("pmp deny: task fault OK");
+    }
+
+    if matches!(
+        reason,
+        crate::kernel::task::table::TaskFaultReason::InstructionAccessFault
+    ) && crate::kernel::memory::is_inside_kernel_text(mtval)
+    {
+        let already = USER_TEXT_FETCH_DENY_PRINTED.with(|printed| {
+            let already = *printed;
+            *printed = true;
+            already
+        });
+        if !already {
+            crate::drivers::uart::write_line("user text: kernel fetch deny OK");
+        }
     }
 
     crate::kernel::task::scheduler::note_default_image_return(
@@ -115,3 +135,5 @@ pub fn record_and_switch_user_fault(mcause: u64, mepc: u64, mtval: u64) -> ! {
     crate::kernel::cpu::clear_current();
     crate::kernel::task::scheduler::switch_after(after);
 }
+
+const _: fn() = print_current_trap_fault_classification;
