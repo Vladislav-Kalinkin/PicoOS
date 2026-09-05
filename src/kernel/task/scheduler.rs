@@ -142,7 +142,9 @@ pub fn note_default_image_return(kind: crate::kernel::task::table::TaskReturnKin
             try_print_scenario_markers();
         }
         crate::kernel::task::table::TaskReturnKind::None
-        | crate::kernel::task::table::TaskReturnKind::Join => {}
+        | crate::kernel::task::table::TaskReturnKind::Join
+        | crate::kernel::task::table::TaskReturnKind::Send
+        | crate::kernel::task::table::TaskReturnKind::Recv => {}
     }
 
     let yield_seen = DEFAULT_SEEN_YIELD.with(|seen| *seen);
@@ -164,13 +166,16 @@ fn try_print_scenario_markers() {
     let faulted = SEEN_FAULT.with(|seen| *seen);
     let slept = DEFAULT_SEEN_SLEEP.with(|seen| *seen);
 
-    let marker = if (cfg!(feature = "scenario_resume") && yields >= 2 && exits >= 1)
-        || (cfg!(feature = "scenario_handoff") && exits >= 2)
+    let plan = crate::kernel::contract::plan();
+    let marker = if (plan == crate::kernel::contract::BootContract::Resume
+        && yields >= 2
+        && exits >= 1)
+        || (plan == crate::kernel::contract::BootContract::Handoff && exits >= 2)
     {
         Some("scheduler resume loop result: OK")
-    } else if cfg!(feature = "scenario_sleep") && slept && exits >= 1 {
+    } else if plan == crate::kernel::contract::BootContract::Sleep && slept && exits >= 1 {
         Some("task sleep runtime e2e result: OK")
-    } else if cfg!(feature = "scenario_fault")
+    } else if plan == crate::kernel::contract::BootContract::Fault
         && faulted
         && exits >= 1
         && !task::has_dispatchable_tasks()

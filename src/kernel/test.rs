@@ -94,7 +94,6 @@ fn test_reap_leak_check() {
     }
 }
 
-#[cfg(feature = "scenario_reap")]
 pub fn run_selftests() -> ! {
     uart::write_line("");
     uart::write_line("selftest mode:");
@@ -113,7 +112,6 @@ pub fn run_selftests() -> ! {
     crate::arch::halt();
 }
 
-#[cfg(feature = "scenario_kernel_fault")]
 pub fn run_kernel_fault_guard() -> ! {
     uart::write_line("");
     uart::write_line("kernel fault guard test:");

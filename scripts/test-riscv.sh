@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cargo clean
-cargo build --features "scenario_reap"
+cargo build
 
 qemu-system-riscv64 \
   -M virt \

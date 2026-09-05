@@ -132,10 +132,8 @@ pub fn record_and_switch_user_fault(mcause: u64, mepc: u64, mtval: u64) -> ! {
     );
 
     let after = crate::kernel::cpu::current();
-    if let Some(id) = after
-        && crate::kernel::task::table::join_wake(id)
-    {
-        crate::kernel::task::scheduler::note_join_reap();
+    if let Some(id) = after {
+        crate::kernel::ipc::on_peer_exit(id);
     }
     crate::kernel::cpu::clear_current();
     crate::kernel::task::scheduler::switch_after(after);

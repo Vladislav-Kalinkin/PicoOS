@@ -1,6 +1,6 @@
-use crate::arch::riscv64::ecall::{u_ecall_0, u_ecall_a0, u_ecall_a0a1};
+use crate::arch::riscv64::ecall::{u_ecall_0, u_ecall_a0, u_ecall_a0a1, u_ecall_a0a1a2, u_ecall_recv};
 use crate::kernel::sys::{
-    SYS_EXIT, SYS_GETTID, SYS_JOIN, SYS_LOG, SYS_SLEEP, SYS_SPAWN, SYS_YIELD,
+    SYS_EXIT, SYS_GETTID, SYS_JOIN, SYS_LOG, SYS_RECV, SYS_SEND, SYS_SLEEP, SYS_SPAWN, SYS_YIELD,
 };
 
 /// U-mode stub: `ecall` only. Worker/trampoline Rust may call this, not UART.
@@ -47,4 +47,16 @@ pub extern "Rust" fn u_sys_join(tid: u64) -> u64 {
 #[unsafe(link_section = ".usertext")]
 pub extern "Rust" fn u_sys_gettid() -> u64 {
     u_ecall_0(SYS_GETTID)
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".usertext")]
+pub extern "Rust" fn u_sys_send(tid: u64, bytes: &[u8]) -> u64 {
+    u_ecall_a0a1a2(SYS_SEND, tid, bytes.as_ptr() as u64, bytes.len() as u64)
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".usertext")]
+pub extern "Rust" fn u_sys_recv(buf: &mut [u8]) -> (u64, u64) {
+    u_ecall_recv(SYS_RECV, buf.as_mut_ptr() as u64, buf.len() as u64)
 }

@@ -56,32 +56,7 @@ pub extern "C" fn riscv64_trap_handler(frame: *mut Riscv64TrapFrame) {
             crate::kernel::task::fault::record_and_switch_user_fault(cause, mepc, mtval);
         }
         crate::kernel::task::fault::TrapFaultClassification::KernelFault => {
-            #[cfg(feature = "scenario_kernel_fault")]
-            {
-                crate::kernel::cpu::print_trap_execution_context();
-                crate::kernel::task::fault::print_current_trap_fault_classification();
-                crate::kernel::log::fail("trap", "kernel fault -> halt");
-
-                let frame_on_trap_stack =
-                    arch::is_trap_stack_addr(core::ptr::from_ref(frame) as u64);
-                uart::write_str("trap frame on trap stack: ");
-                crate::kernel::task::table::print_yes_no(frame_on_trap_stack);
-                uart::write_line("");
-
-                if !frame_on_trap_stack {
-                    uart::write_line("kernel fault guard result: FAILED");
-                    arch::halt();
-                }
-
-                uart::write_line("kernel fault guard result: OK");
-                arch::halt();
-            }
-
-            #[cfg(not(feature = "scenario_kernel_fault"))]
-            {
-                crate::kernel::log::fail("trap", "system halted after trap");
-                arch::halt();
-            }
+            handle_kernel_fault(frame);
         }
     }
 }
@@ -114,13 +89,38 @@ fn handle_timer_interrupt(frame: &Riscv64TrapFrame) -> ! {
 
     timer::arm_timer_hz(TIMER_HZ);
 
-    #[cfg(feature = "scenario_preempt")]
-    if next.is_some() {
+    if crate::kernel::contract::plan() == crate::kernel::contract::BootContract::Preempt
+        && next.is_some()
+    {
         crate::kernel::log::ok("timer", "preemption: mret to worker");
         uart::write_line("timer preemption result: OK");
     }
 
     crate::kernel::task::scheduler::switch_to(next);
+}
+
+fn handle_kernel_fault(frame: &Riscv64TrapFrame) -> ! {
+    if crate::kernel::contract::plan() != crate::kernel::contract::BootContract::KernelFault {
+        crate::kernel::log::fail("trap", "system halted after trap");
+        arch::halt();
+    }
+
+    crate::kernel::cpu::print_trap_execution_context();
+    crate::kernel::task::fault::print_current_trap_fault_classification();
+    crate::kernel::log::fail("trap", "kernel fault -> halt");
+
+    let frame_on_trap_stack = arch::is_trap_stack_addr(core::ptr::from_ref(frame) as u64);
+    uart::write_str("trap frame on trap stack: ");
+    crate::kernel::task::table::print_yes_no(frame_on_trap_stack);
+    uart::write_line("");
+
+    if !frame_on_trap_stack {
+        uart::write_line("kernel fault guard result: FAILED");
+        arch::halt();
+    }
+
+    uart::write_line("kernel fault guard result: OK");
+    arch::halt();
 }
 
 fn print_timer_tick_if_verbose(
@@ -131,51 +131,40 @@ fn print_timer_tick_if_verbose(
     saved_pc: u64,
     next: Option<usize>,
 ) {
-    #[cfg(feature = "scenario_preempt")]
-    {
-        uart::write_str("tick: ");
-        uart::write_dec_u64(tick);
-
-        uart::write_str(" saved current: ");
-        match interrupted_worker {
-            Some(id) => {
-                crate::kernel::task::scheduler::print_task_name(id);
-                crate::kernel::task::print_task_context_values(saved_sp, saved_pc);
-            }
-            None => uart::write_str("none"),
-        }
-
-        uart::write_str(" decision next: ");
-        match next {
-            Some(id) => crate::kernel::task::scheduler::print_task_name(id),
-            None => uart::write_str("idle"),
-        }
-
-        uart::write_str(" mode: mret");
-        uart::write_str(" woke: ");
-        uart::write_dec_u64(woke_tasks as u64);
-
-        uart::write_str(" context:");
-        match crate::kernel::task::scheduler::current_task_id() {
-            Some(id) => crate::kernel::task::print_task_full_context_by_id(id),
-            None => uart::write_str(" none"),
-        }
-
-        uart::write_line("");
-        crate::kernel::log::info("timer", "scheduler decision computed");
+    if crate::kernel::contract::plan() != crate::kernel::contract::BootContract::Preempt {
+        return;
     }
 
-    #[cfg(not(feature = "scenario_preempt"))]
-    {
-        let _ = (
-            tick,
-            woke_tasks,
-            interrupted_worker,
-            saved_sp,
-            saved_pc,
-            next,
-        );
+    uart::write_str("tick: ");
+    uart::write_dec_u64(tick);
+
+    uart::write_str(" saved current: ");
+    match interrupted_worker {
+        Some(id) => {
+            crate::kernel::task::scheduler::print_task_name(id);
+            crate::kernel::task::print_task_context_values(saved_sp, saved_pc);
+        }
+        None => uart::write_str("none"),
     }
+
+    uart::write_str(" decision next: ");
+    match next {
+        Some(id) => crate::kernel::task::scheduler::print_task_name(id),
+        None => uart::write_str("idle"),
+    }
+
+    uart::write_str(" mode: mret");
+    uart::write_str(" woke: ");
+    uart::write_dec_u64(woke_tasks as u64);
+
+    uart::write_str(" context:");
+    match crate::kernel::task::scheduler::current_task_id() {
+        Some(id) => crate::kernel::task::print_task_full_context_by_id(id),
+        None => uart::write_str(" none"),
+    }
+
+    uart::write_line("");
+    crate::kernel::log::info("timer", "scheduler decision computed");
 }
 
 fn print_trap_cause(cause: u64) {

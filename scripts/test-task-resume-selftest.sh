@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cargo clean
-
-cargo build --features "scenario_resume"
-
-scripts/qemu-expect.sh "scheduler resume loop result: OK"
+scripts/qemu-expect.sh "scheduler resume loop result: OK" 1

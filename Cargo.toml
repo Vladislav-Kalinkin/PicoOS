@@ -1,6 +1,6 @@
 [package]
 name = "PicoOS"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.98.1"
 
@@ -20,18 +20,6 @@ lto = "fat"
 opt-level = "s"
 strip = "symbols"
 debug = false
-
-[features]
-# Public scenario selectors. Always-on: U-mode mret, timer preemption via
-# mret, reap on the ecall path, scheduler start via mret. Scenario flags
-# only pick workers and UART contracts. There is no M-mode yield_now path.
-scenario_resume = []
-scenario_reap = []
-scenario_sleep = []
-scenario_handoff = []
-scenario_fault = []
-scenario_preempt = []
-scenario_kernel_fault = []
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

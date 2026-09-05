@@ -1,13 +1,5 @@
 #![no_std]
 #![no_main]
-// Truncated boots: reap never calls `arch::init` / `scheduler::run`,
-// kernel-fault `ebreak`s before the scheduler. The always-on kernel stays
-// compiled; unused here is the short path, not leftover dual-mode code.
-#![cfg_attr(
-    any(feature = "scenario_reap", feature = "scenario_kernel_fault"),
-    allow(dead_code, unused_imports)
-)]
-#![cfg_attr(feature = "scenario_kernel_fault", allow(unreachable_code))]
 
 use core::panic::PanicInfo;
 
@@ -31,22 +23,16 @@ pub extern "C" fn kernel_main() -> ! {
     uart::write_line("status: kernel started");
     kernel::banner::print_capabilities();
 
-    #[cfg(feature = "scenario_reap")]
-    {
-        kernel::test::run_selftests();
-    }
+    arch::init_exceptions();
+    arch::pmp::init();
+    arch::print_cpu_info();
 
-    #[cfg(not(feature = "scenario_reap"))]
-    {
-        arch::init_exceptions();
-        arch::pmp::init();
-        arch::print_cpu_info();
+    kernel::contract::apply_boot_contract();
 
-        #[cfg(feature = "scenario_kernel_fault")]
-        kernel::test::run_kernel_fault_guard();
-
-        #[cfg(not(feature = "scenario_kernel_fault"))]
-        {
+    match kernel::contract::plan() {
+        kernel::contract::BootContract::Reap => kernel::test::run_selftests(),
+        kernel::contract::BootContract::KernelFault => kernel::test::run_kernel_fault_guard(),
+        _ => {
             kernel::test::run_memory_tests();
             kernel::task::test::spawn_default_image();
             kernel::task::scheduler::switch_to_idle();

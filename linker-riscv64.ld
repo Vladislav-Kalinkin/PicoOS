@@ -34,6 +34,11 @@ SECTIONS
         __data_end = .;
     }
 
+    .boot_contract : ALIGN(8) {
+        KEEP(*(.boot_contract))
+        . = ALIGN(8);
+    }
+
     .bss : ALIGN(4K) {
         __bss_start = .;
         *(.bss*)

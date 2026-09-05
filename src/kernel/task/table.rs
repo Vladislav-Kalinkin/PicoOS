@@ -29,6 +29,8 @@ pub enum TaskReturnKind {
     Sleep,
     Fault,
     Join,
+    Send,
+    Recv,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,6 +39,8 @@ pub enum TaskLifecycleTransition {
     Yield,
     Sleep,
     Join,
+    Send,
+    Recv,
     Exit,
     Fault,
 }
@@ -45,6 +49,8 @@ pub enum TaskLifecycleTransition {
 pub enum BlockReason {
     SleepUntil(u64),
     Join(TaskId),
+    Send { to: TaskId, len: u8 },
+    Recv { ptr: u64, max: u64 },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -88,6 +94,8 @@ pub struct Task {
     pub last_return_kind: TaskReturnKind,
     pub block: Option<BlockReason>,
     pub spawn_arg: u64,
+    pub ipc_pending: [u8; 32],
+    pub ipc_len: u8,
 }
 
 impl Task {
@@ -107,6 +115,8 @@ impl Task {
             last_return_kind: TaskReturnKind::None,
             block: None,
             spawn_arg: 0,
+            ipc_pending: [0; 32],
+            ipc_len: 0,
         }
     }
 }
@@ -357,8 +367,15 @@ const fn can_transition_from(state: TaskState, transition: TaskLifecycleTransiti
         TaskLifecycleTransition::Yield => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Sleep => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Join => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Send => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Recv => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Exit => matches!(state, TaskState::Ready | TaskState::Running),
-        TaskLifecycleTransition::Fault => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Fault => {
+            matches!(
+                state,
+                TaskState::Ready | TaskState::Running | TaskState::Blocked
+            )
+        }
     }
 }
 
@@ -483,6 +500,8 @@ pub fn print_task_return_kind(kind: TaskReturnKind) {
         TaskReturnKind::Sleep => uart::write_str("Sleep"),
         TaskReturnKind::Fault => uart::write_str("Fault"),
         TaskReturnKind::Join => uart::write_str("Join"),
+        TaskReturnKind::Send => uart::write_str("Send"),
+        TaskReturnKind::Recv => uart::write_str("Recv"),
     }
 }
 
@@ -789,6 +808,138 @@ fn free_task_stack_page(stack_start: u64) {
     if let Some(page) = memory::PhysPage::new(stack_start) {
         memory::free_pages(page, 1);
     }
+}
+
+pub fn stack_contains(id: TaskId, ptr: u64, len: u64) -> bool {
+    let Some(end) = ptr.checked_add(len) else {
+        return false;
+    };
+    with_task(id, |task| {
+        ptr >= task.stack_start && end <= task.stack_top && task.stack_top > task.stack_start
+    })
+    .unwrap_or(false)
+}
+
+pub fn block_reason(id: TaskId) -> Option<BlockReason> {
+    with_task(id, |task| task.block)?
+}
+
+pub fn recv_buf(id: TaskId) -> Option<(u64, u64)> {
+    if !matches!(get_task_state(id), Some(TaskState::Blocked)) {
+        return None;
+    }
+    match block_reason(id)? {
+        BlockReason::Recv { ptr, max } => Some((ptr, max)),
+        _ => None,
+    }
+}
+
+pub fn find_send_waiter_to(to: TaskId) -> Option<TaskId> {
+    snapshot_tasks().iter().find_map(|task| {
+        if !matches!(task.state, TaskState::Blocked) {
+            return None;
+        }
+        match task.block {
+            Some(BlockReason::Send { to: dest, .. }) if dest == to => Some(task.id),
+            _ => None,
+        }
+    })
+}
+
+pub fn set_ipc_pending(id: TaskId, bytes: [u8; 32], len: u8) -> bool {
+    with_task_mut(id, |task| {
+        task.ipc_pending = bytes;
+        task.ipc_len = len;
+    })
+    .is_some()
+}
+
+pub fn take_ipc_pending(id: TaskId) -> Option<([u8; 32], u8)> {
+    with_task_mut(id, |task| {
+        let out = (task.ipc_pending, task.ipc_len);
+        task.ipc_pending = [0; 32];
+        task.ipc_len = 0;
+        out
+    })
+}
+
+pub fn ipc_pending_len(id: TaskId) -> Option<u8> {
+    with_task(id, |task| task.ipc_len)
+}
+
+pub fn mark_task_blocked_send(id: TaskId, to: TaskId, len: u8) -> bool {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Send) {
+            return false;
+        }
+        task.state = TaskState::Blocked;
+        task.last_return_kind = TaskReturnKind::Send;
+        task.can_resume = false;
+        task.block = Some(BlockReason::Send { to, len });
+        true
+    })
+    .unwrap_or(false)
+}
+
+pub fn mark_task_blocked_recv(id: TaskId, ptr: u64, max: u64) -> bool {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Recv) {
+            return false;
+        }
+        task.state = TaskState::Blocked;
+        task.last_return_kind = TaskReturnKind::Recv;
+        task.can_resume = false;
+        task.block = Some(BlockReason::Recv { ptr, max });
+        true
+    })
+    .unwrap_or(false)
+}
+
+pub fn ready_from_block(id: TaskId, a0: u64, a1: u64, kind: TaskReturnKind) -> bool {
+    let updated = with_task_mut(id, |task| {
+        if !matches!(task.state, TaskState::Blocked) {
+            return false;
+        }
+        if let Some(image) = task.trap_image.as_mut() {
+            image.gpr.a0 = a0;
+            image.gpr.a1 = a1;
+        }
+        task.state = TaskState::Ready;
+        task.block = None;
+        task.ipc_pending = [0; 32];
+        task.ipc_len = 0;
+        true
+    })
+    .unwrap_or(false);
+    if !updated {
+        return false;
+    }
+
+    let can_resume = is_resume_frame_safe_for_task(id);
+    let _ = with_task_mut(id, |task| {
+        task.can_resume = can_resume;
+        task.last_return_kind = if can_resume {
+            kind
+        } else {
+            TaskReturnKind::None
+        };
+    });
+    true
+}
+
+pub fn has_potential_ipc_sender(recv_id: TaskId) -> bool {
+    snapshot_tasks().iter().any(|task| {
+        if task.id == recv_id {
+            return false;
+        }
+        match task.state {
+            TaskState::Ready | TaskState::Running => true,
+            TaskState::Blocked => {
+                matches!(task.block, Some(BlockReason::Send { to, .. }) if to == recv_id)
+            }
+            TaskState::Empty | TaskState::Finished | TaskState::Faulted => false,
+        }
+    })
 }
 
 const _: fn(u64, u64) = print_task_context_values;

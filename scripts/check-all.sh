@@ -59,14 +59,6 @@ CLIPPY_FLAGS=(
   -A clippy::use_self
 )
 
-clippy_riscv() {
-  local label=$1
-  shift
-  echo
-  echo "== Clippy RISC-V ${label} =="
-  cargo clippy "$@" -- "${CLIPPY_FLAGS[@]}"
-}
-
 echo "== PicoOS check-all =="
 
 echo
@@ -78,58 +70,22 @@ echo "== usertext symbol contract =="
 scripts/check-usertext.sh
 
 echo
-echo "== Build RISC-V scenario_reap =="
-cargo build --features "scenario_reap"
-
-echo
-echo "== Build RISC-V scenario_resume =="
-cargo build --features "scenario_resume"
-
-clippy_riscv "default"
-clippy_riscv "scenario_reap" --features "scenario_reap"
-clippy_riscv "scenario_resume" --features "scenario_resume"
-
-echo
-echo "== Build RISC-V scenario_sleep =="
-cargo build --features "scenario_sleep"
-
-clippy_riscv "scenario_sleep" --features "scenario_sleep"
-
-echo
-echo "== Build RISC-V scenario_handoff =="
-cargo build --features "scenario_handoff"
-
-clippy_riscv "scenario_handoff" --features "scenario_handoff"
-
-echo
-echo "== Build RISC-V scenario_fault =="
-cargo build --features "scenario_fault"
-
-clippy_riscv "scenario_fault" --features "scenario_fault"
-
-echo
-echo "== Build RISC-V scenario_kernel_fault =="
-cargo build --features "scenario_kernel_fault"
-
-clippy_riscv "scenario_kernel_fault" --features "scenario_kernel_fault"
-
-echo
-echo "== Build RISC-V scenario_preempt =="
-cargo build --features "scenario_preempt"
-
-clippy_riscv "scenario_preempt" --features "scenario_preempt"
+echo "== Clippy RISC-V default =="
+cargo clippy -- "${CLIPPY_FLAGS[@]}"
 
 echo
 echo "== QEMU marker tests =="
-scripts/test-mm-reap-riscv.sh
-scripts/test-timer-preemption-riscv.sh
+scripts/test-default-riscv.sh
 scripts/test-task-resume-selftest.sh
+scripts/test-two-task-handoff-riscv.sh
 scripts/test-task-sleep-riscv.sh
 scripts/test-task-sleep-runtime-e2e-riscv.sh
-scripts/test-two-task-handoff-riscv.sh
 scripts/test-scheduler-fault-lifecycle-riscv.sh
+scripts/test-timer-preemption-riscv.sh
+scripts/test-mm-reap-riscv.sh
 scripts/test-kernel-fault-guard-riscv.sh
-scripts/test-default-riscv.sh
+scripts/test-ipc-riscv.sh
+scripts/test-user-text-riscv.sh
 
 echo
 echo "== All checks passed =="
