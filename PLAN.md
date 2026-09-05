@@ -1,73 +1,72 @@
-# PicoOS 0.2 — brief plan
+# PicoOS 0.3 — brief plan
 
 Full specification (English, reviewed to 0 open issues):
+[`docs/picoos-0.3-frame-kernel.md`](docs/picoos-0.3-frame-kernel.md)
+
+Prior milestone (shipped 0.2.0):
 [`docs/picoos-0.2-frame-kernel.md`](docs/picoos-0.2-frame-kernel.md)
 
-**Thesis:** Contract-Checked Frame Kernel. A frame is stack + trap image + lifecycle + resume contract. Every transfer (boot, trap, yield, sleep, preempt, fault) is a named, UART-observable contract. Not mini-Linux, not xv6.
+**Thesis:** Complete the Frame Kernel identity on one hart: dispatch + PMP X-range + copy-IPC routing. A thread is a Frame. Isolation in 0.3 is unlocked PMP (U-X only `.usertext`) + ResumeContract, not Sv39.
 
-**Target:** RISC-V 64, QEMU `virt`, `-bios none`. One hart. Milestone ends at 0.2; Sv39/S-mode is 0.3.
+**Target:** RISC-V 64, QEMU `virt`, `-bios none`. One hart. M-mode kernel, U-mode frames. Milestone ends at 0.3; Sv39/S-mode is 0.4.
 
-## Current tree (audit)
+## From 0.2 (already shipped)
 
-Hobby kernel: edition 2021, 35 Cargo features, 204 `#[allow]`, 144 `unsafe`, 20 `static mut`. Default boot arms a 1 Hz timer and **halts after 5 ticks**. Real dispatch/restore live behind features. Allocators never free. Everything runs in M-mode.
+M-mode kernel, U-mode frames, unlocked PMP, four `ecall`s, always-on scheduler, `mret` preemption, bitmap + reap, `MAX_TASKS = 8`, seven `scenario_*` binaries. Leftover: U can `jal` handler bytes because `.text` is RX.
 
-Keep: `src/arch`, `src/drivers`, `src/platform`, `src/kernel/task`, trap stack, lifecycle FSM, resume checks, QEMU UART scripts as ABI.
+## 0.3 outcome
+
+- `.usertext` + PMP: U execute only there; kernel `.text` fetch-deny is a task fault.
+- Spawn / join / gettid. Always-zombie until join. One joiner.
+- Copy-IPC rendezvous (32 bytes). Not on the default image.
+- One `cargo build` + `.boot_contract` byte (objcopy). UART stays TX-only.
+- No VFS. No SMP. No Sv39.
+
+Default image (contract byte 0): idle + yield + sleep + pmp-deny + spawn/join child.
 
 ## Phases
 
 | Phase | PRs | Outcome |
 | --- | --- | --- |
-| 0 Hygiene | 0–3 | rustc 1.97.1, edition **2024**, Clippy **`-D warnings`** (not pedantic/nursery as deny), dead code gone, English comments |
-| 1 Cleanup | 4–9 | `MAX_TASKS = 8`, split arch files, `Cpu`, nestable `without_interrupts`, no production `static mut`, panic + UART LSR |
-| 2 Correct base | 10–20 | bitmap free, reap, always-on scheduler, yield `s0–s11`, default idle+workers, preemption via `mret`, then **U-mode + PMP + `ecall`** |
-| 3 Freeze 0.2 | 21–23 | collapse features, full `check-all.sh` matrix, banner `0.2.0` matching the binary |
+| 1 Always-on verbs | 1–2 | all U stubs/workers compile; `BlockReason` |
+| 2 Isolation + threads | 3–5 | `.usertext` PMP, asm trampoline, spawn/join |
+| 3 IPC + timer | 6–7 | copy-IPC (code); 100 Hz quiet timer |
+| 4 One binary | 8–10 | unify `kernel_main`, objcopy contract, delete `scenario_*` |
+| 5 Freeze 0.3 | 11 | banner `0.3.0` matching tested capabilities |
 
-This is an **ordered series**, not 24 independently mergeable PRs. After every PR: `scripts/check-all.sh`. Parallel: `{PR8, PR9}` after PR1; `{PR4, PR5}` after PR3; PR14 and PR18 can start before PR13/PR15.
+Ordered series. After every PR: `scripts/check-all.sh`. Parallel: `{PR1, PR2, PR7}`; PR8 after PR1 (can overlap 3–7).
 
 ## Isolation (do not fake)
 
-- **0.2:** M-mode kernel, U-mode frames, unlocked PMP, four `ecall`s (`yield` / `sleep` / `exit` / `log`). Kernel prints UART markers.
-- PMP: TOR chain first (pmp0 bound/deny `[0, __text_start)`, pmp1 `.text` **RX**, pmp2 `.rodata` R), then NAPOT current stack. Miss = deny for `.data`/UART/CLINT.
-- `ecall` resume: **`mepc += 4`**. Timer does not. Handler `mstatus`: `MIE=0`, `MPIE=1`. PR16 `MPP=M`; PR19 `MPP=U`.
-- Idle is M-mode `wfi`, not a `Task`. Idle-exit resets `mscratch`, no `mret`.
-- Banner may claim PMP only after a provoked U-mode store faults.
+- U-X only `.usertext` (not `.text.user` — live `*(.text*)` would swallow that name).
+- pmp1 TOR end = `__user_text_start` (align gap is deny). Stack NAPOT is pmp4 (`pmpcfg0` bit 32).
+- ResumeContract: `mepc` in user text, `sp` in own stack.
+- Product limits that stay in 0.3: one identity map, one NAPOT stack, user-text gadgets, no IPC caps.
 
 ## PR series
 
-0. Pin rustc 1.97.1  
-1. Edition 2024  
-2. `clippy.toml`; CI stays `-D warnings`  
-3. Dead code; English comments; drop unused allows  
-4. Index table by id; `MAX_TASKS = 8`  
-5. Split `yield.rs` / `restore.rs`  
-6. `Cpu` replaces debug globals  
-7. Nestable IRQ mask; `UnsafeCell`; `static mut` → 0  
-8. Panic logs `PanicInfo` *(parallel)*  
-9. UART LSR poll *(parallel)*  
-10. Bitmap page allocator with free  
-11. Remove bump heap  
-12. Reap Finished/Faulted → Empty; leak marker  
-13. Always compile dispatch  
-14. Yield saves `s0–s11` (interim M-mode)  
-15. Default image: idle + `worker_yield` + `worker_sleep` (no 5-tick halt)  
-16. Preemption via trap frame + `mret` (`MPP=M`); add timer script to `check-all.sh`  
-17. Sleep wake fixtures (no-image stays `can_resume=false`)  
-18. PMP dump + split trap stack from `.bss`  
-19. U-mode + `u_sys_*` + PMP deny + store-fault test  
-20. Fault classify by privilege/region  
-21. Feature collapse → scenario selectors  
-22. Full QEMU matrix; no `cargo clean`  
-23. Banner PicoOS 0.2.0  
+1. Always compile U stubs and workers  
+2. `BlockReason` (parallel with 1)  
+3. `.usertext` linker + PMP X-range + ResumeContract  
+4. Asm trampoline; delete `transmute`  
+5. `sys_spawn` / `sys_join` / `sys_gettid`  
+6. Copy-IPC (code only; QEMU gate in PR9)  
+7. Quiet 100 Hz (parallel after PR1)  
+8. Unify `kernel_main`  
+9. `.boot_contract` byte; one build for all QEMU tests  
+10. Delete `scenario_*`  
+11. Banner PicoOS 0.3.0  
 
 ## Done when
 
-Default `cargo build` on QEMU virt: always-on scheduler, U-mode workers, real preemption, sleep/wake, task fault ≠ kernel halt, `mm leak check: OK`, no halt at tick 5, existing marker scripts green.
+Single `cargo build` on QEMU virt: `.usertext` fetch-deny, spawn+join (child may exit first), copy-IPC contract, no `scenario_*`, `check-all.sh` green, banner `0.3.0`.
 
-## Deferred (0.3+)
+## Deferred (0.4+)
 
-Sv39, S-mode, OpenSBI vs `-bios none`, `.text.user`, SMP, VFS, net, POSIX.
+Sv39, S-mode, OpenSBI vs homegrown M-trampoline (`-bios none` recommended), SMP, VFS (userspace-only if/when; kernel pages never files), net, POSIX.
 
-## Open (not blocking 0.2)
+## Open (not blocking 0.3)
 
-- OpenSBI in 0.3 vs staying `-bios none`.
-- Reap from scheduler (recommended) vs idle vs ISR.
+- 0.4 bootstrap: homegrown M-trampoline vs OpenSBI (default: homegrown, `-bios none`).
+- IPC payload 32 vs 8 (default: 32).
+- Raise `MAX_TASKS` to 16 (default: stay 8).
