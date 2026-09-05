@@ -38,12 +38,12 @@ fn test_page_alloc_free_four() {
     }
 }
 
-fn reap_probe_task() {
+extern "C" fn reap_probe_task(_arg: u64) {
     crate::arch::halt();
 }
 
 fn test_reap_leak_check() {
-    use crate::kernel::task::table::{create_task, destroy, mark_task_finished};
+    use crate::kernel::task::table::{destroy, mark_task_finished, spawn};
 
     uart::write_line("");
     uart::write_line("mm reap:");
@@ -52,7 +52,7 @@ fn test_reap_leak_check() {
 
     let used_before = kernel::memory::stats().used;
 
-    let Some(id) = create_task("reap-a", reap_probe_task) else {
+    let Some(id) = spawn("reap-a", reap_probe_task, 0) else {
         uart::write_line("mm leak check: FAILED create");
         return;
     };
@@ -72,7 +72,7 @@ fn test_reap_leak_check() {
         return;
     }
 
-    let Some(id2) = create_task("reap-b", reap_probe_task) else {
+    let Some(id2) = spawn("reap-b", reap_probe_task, 0) else {
         uart::write_line("mm leak check: FAILED recreate");
         return;
     };

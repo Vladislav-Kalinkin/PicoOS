@@ -24,7 +24,7 @@ pub fn print_task_zero_context_guard() {
 pub fn test_task_sleep_wakeup_table_selftest() {
     uart::write_line("task sleep table selftest:");
 
-    let Some(task_id) = crate::kernel::task::table::create_task("sleep-probe", sleep_probe) else {
+    let Some(task_id) = crate::kernel::task::table::spawn("sleep-probe", sleep_probe, 0) else {
         uart::write_line("task sleep wake result: FAILED");
         crate::arch::halt();
     };
@@ -126,7 +126,7 @@ pub fn test_task_sleep_wakeup_table_selftest() {
     test_task_sleep_wakeup_with_saved_image();
 }
 
-fn sleep_probe() {
+extern "C" fn sleep_probe(_arg: u64) {
     crate::arch::halt();
 }
 
@@ -134,7 +134,7 @@ fn sleep_probe() {
 fn test_task_sleep_wakeup_with_saved_image() {
     uart::write_line("task sleep table selftest (saved image):");
 
-    let Some(task_id) = crate::kernel::task::table::create_task("sleep-img", sleep_probe) else {
+    let Some(task_id) = crate::kernel::task::table::spawn("sleep-img", sleep_probe, 0) else {
         uart::write_line("task sleep wake image result: FAILED");
         crate::arch::halt();
     };
@@ -150,7 +150,7 @@ fn test_task_sleep_wakeup_with_saved_image() {
 
     let started = crate::kernel::task::table::mark_task_started(task_id);
     let sp = stack_top.saturating_sub(16);
-    let pc = crate::user::user_trampoline as *const () as usize as u64;
+    let pc = crate::arch::riscv64::user_trampoline_addr();
 
     let mut image = crate::kernel::trap_frame::TrapImage::empty();
     image.gpr.sp = sp;

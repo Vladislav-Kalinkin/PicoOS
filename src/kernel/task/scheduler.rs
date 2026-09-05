@@ -11,6 +11,8 @@ static U_YIELDS: IrqCell<u32> = IrqCell::new(0);
 static U_EXITS: IrqCell<u32> = IrqCell::new(0);
 static SEEN_FAULT: IrqCell<bool> = IrqCell::new(false);
 static SCENARIO_MARKER_PRINTED: IrqCell<bool> = IrqCell::new(false);
+static JOIN_LEAK_BASELINE: IrqCell<Option<u64>> = IrqCell::new(None);
+static JOIN_LEAK_PRINTED: IrqCell<bool> = IrqCell::new(false);
 
 pub fn current_task_id() -> Option<usize> {
     CURRENT_TASK_ID.with(|id| *id)
@@ -41,12 +43,17 @@ pub fn idle_loop() -> ! {
 }
 
 fn build_fresh_trap_image(task_id: usize) -> Option<TrapImage> {
-    let entry = task::get_task_entry(task_id)?;
+    let entry_pc = task::get_task_initial_pc(task_id)?;
+    if entry_pc == 0 {
+        return None;
+    }
     let stack_top = task::get_task_stack_top(task_id)?;
+    let spawn_arg = task::get_task_spawn_arg(task_id).unwrap_or(0);
     let mut image = TrapImage::empty();
     image.gpr.sp = stack_top;
-    image.gpr.a0 = entry as *const () as usize as u64;
-    image.mepc = crate::user::user_trampoline as *const () as usize as u64;
+    image.gpr.a0 = entry_pc;
+    image.gpr.a1 = spawn_arg;
+    image.mepc = crate::arch::riscv64::user_trampoline_addr();
     Some(image)
 }
 
@@ -87,6 +94,7 @@ fn image_for_dispatch(task_id: usize) -> Option<(TrapImage, bool)> {
 
 fn mret_to_task(task_id: usize) -> ! {
     let Some((image, fresh)) = image_for_dispatch(task_id) else {
+        crate::kernel::log::fail("sched", "dispatch image missing");
         crate::arch::halt();
     };
     arm_worker_for_mret(task_id, fresh);
@@ -101,15 +109,10 @@ pub fn switch_to(next: Option<usize>) -> ! {
     }
 }
 
-/// Pick the next worker after `after`, reap `after` if it is terminal, then
-/// `mret` or idle-exit. Call only from a trap (ecall / fault / timer).
+/// Pick the next worker after `after`, then `mret` or idle-exit.
+/// Terminal frames stay zombies until `sys_join` / `join_wake`.
 pub fn switch_after(after: Option<usize>) -> ! {
     let next = next_after(after);
-    if let Some(id) = after
-        && task::is_terminal_task(id)
-    {
-        let _ = task::destroy(id);
-    }
     switch_to(next);
 }
 
@@ -138,7 +141,8 @@ pub fn note_default_image_return(kind: crate::kernel::task::table::TaskReturnKin
             SEEN_FAULT.with(|seen| *seen = true);
             try_print_scenario_markers();
         }
-        crate::kernel::task::table::TaskReturnKind::None => {}
+        crate::kernel::task::table::TaskReturnKind::None
+        | crate::kernel::task::table::TaskReturnKind::Join => {}
     }
 
     let yield_seen = DEFAULT_SEEN_YIELD.with(|seen| *seen);
@@ -182,4 +186,30 @@ fn try_print_scenario_markers() {
     }
 }
 
+pub fn capture_default_join_baseline() {
+    JOIN_LEAK_BASELINE.with(|baseline| {
+        *baseline = Some(crate::kernel::memory::stats().used);
+    });
+}
+
+pub fn note_join_reap() {
+    let Some(baseline) = JOIN_LEAK_BASELINE.with(|baseline| *baseline) else {
+        return;
+    };
+    if crate::kernel::memory::stats().used != baseline {
+        return;
+    }
+    let already = JOIN_LEAK_PRINTED.with(|printed| {
+        let already = *printed;
+        *printed = true;
+        already
+    });
+    if already {
+        return;
+    }
+    uart::write_line("default spawn join: OK");
+    uart::write_line("spawn join leak: OK");
+}
+
 const _: fn(usize) = print_task_name;
+const _: fn() = capture_default_join_baseline;

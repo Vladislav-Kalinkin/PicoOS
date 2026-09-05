@@ -129,6 +129,7 @@ scripts/test-task-sleep-runtime-e2e-riscv.sh
 scripts/test-two-task-handoff-riscv.sh
 scripts/test-scheduler-fault-lifecycle-riscv.sh
 scripts/test-kernel-fault-guard-riscv.sh
+scripts/test-default-riscv.sh
 
 echo
 echo "== All checks passed =="

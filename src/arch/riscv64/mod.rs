@@ -1,6 +1,7 @@
 use core::arch::asm;
 
 pub mod cpu;
+pub mod ecall;
 pub mod pmp;
 pub mod restore;
 pub mod timer;
@@ -12,10 +13,16 @@ pub use restore::{idle_exit_from_trap, mret_to_trap_image};
 
 core::arch::global_asm!(include_str!("boot.S"));
 core::arch::global_asm!(include_str!("trap.S"));
+core::arch::global_asm!(include_str!("trampoline.S"));
 
 unsafe extern "C" {
     static trap_vector: u8;
     static __trap_stack_top: u8;
+    pub fn user_trampoline();
+}
+
+pub fn user_trampoline_addr() -> u64 {
+    user_trampoline as *const () as usize as u64
 }
 
 #[inline(always)]
@@ -115,5 +122,3 @@ pub fn print_cpu_info() {
     crate::drivers::uart::write_hex_u64(cpu::stack_pointer());
     crate::drivers::uart::write_line("");
 }
-
-

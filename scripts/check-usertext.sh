@@ -75,6 +75,9 @@ user_syms = [
     "u_sys_sleep",
     "u_sys_exit",
     "u_sys_log",
+    "u_sys_spawn",
+    "u_sys_join",
+    "u_sys_gettid",
     "worker_yield_main",
     "worker_sleep_main",
     "worker_pmp_deny",
@@ -85,6 +88,8 @@ user_syms = [
     "worker_ebreak",
     "worker_sleep_e2e",
     "worker_kernel_fetch",
+    "worker_spawn_main",
+    "child_exit",
 ]
 for name in user_syms:
     addr = need(name)

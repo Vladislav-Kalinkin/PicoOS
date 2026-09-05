@@ -7,12 +7,12 @@ use crate::kernel::trap_frame::{Riscv64TrapFrame, TrapImage};
 const TIMER_HZ: u64 = 100;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn riscv64_trap_handler(frame: *const Riscv64TrapFrame) {
+pub extern "C" fn riscv64_trap_handler(frame: *mut Riscv64TrapFrame) {
     arch::disable_irq();
 
     // SAFETY: `trap.S` stored a full `Riscv64TrapFrame` on the trap stack and
     // passed that address to this handler.
-    let frame = unsafe { &*frame };
+    let frame = unsafe { &mut *frame };
 
     let cause = cpu::mcause();
     let is_interrupt = (cause >> 63) != 0;

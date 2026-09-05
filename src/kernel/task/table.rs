@@ -7,7 +7,9 @@ pub const MAX_TASKS: usize = 8;
 
 pub const TASK_NAME_LEN: usize = 16;
 
-pub type TaskEntry = fn();
+pub type TaskId = usize;
+
+pub type TaskEntry = extern "C" fn(u64);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
@@ -26,6 +28,7 @@ pub enum TaskReturnKind {
     Yield,
     Sleep,
     Fault,
+    Join,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -33,6 +36,7 @@ pub enum TaskLifecycleTransition {
     Start,
     Yield,
     Sleep,
+    Join,
     Exit,
     Fault,
 }
@@ -40,6 +44,7 @@ pub enum TaskLifecycleTransition {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BlockReason {
     SleepUntil(u64),
+    Join(TaskId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -82,6 +87,7 @@ pub struct Task {
     pub can_resume: bool,
     pub last_return_kind: TaskReturnKind,
     pub block: Option<BlockReason>,
+    pub spawn_arg: u64,
 }
 
 impl Task {
@@ -100,6 +106,7 @@ impl Task {
             can_resume: false,
             last_return_kind: TaskReturnKind::None,
             block: None,
+            spawn_arg: 0,
         }
     }
 }
@@ -169,7 +176,32 @@ pub fn init() {
     uart::write_line("");
 }
 
-pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
+pub fn spawn(name: &str, entry: TaskEntry, arg: u64) -> Option<TaskId> {
+    spawn_inner(name, Some(entry), entry as *const () as usize as u64, arg)
+}
+
+pub(crate) fn spawn_user(entry_pc: u64, arg: u64) -> Option<TaskId> {
+    let slot = snapshot_tasks()
+        .iter()
+        .position(|task| matches!(task.state, TaskState::Empty))?;
+    spawn_inner(u_spawn_name(slot), None, entry_pc, arg)
+}
+
+fn u_spawn_name(slot: usize) -> &'static str {
+    match slot {
+        0 => "u-0",
+        1 => "u-1",
+        2 => "u-2",
+        3 => "u-3",
+        4 => "u-4",
+        5 => "u-5",
+        6 => "u-6",
+        7 => "u-7",
+        _ => "u-x",
+    }
+}
+
+fn spawn_inner(name: &str, entry: Option<TaskEntry>, entry_pc: u64, arg: u64) -> Option<TaskId> {
     let slot = snapshot_tasks()
         .iter()
         .position(|task| matches!(task.state, TaskState::Empty))?;
@@ -187,7 +219,6 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
         return None;
     };
 
-    let initial_pc = entry as *const () as usize as u64;
     let mut printed_name = [0u8; TASK_NAME_LEN];
     copy_name(&mut printed_name, name);
 
@@ -198,9 +229,10 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
             name: printed_name,
             stack_start,
             stack_top,
-            entry: Some(entry),
+            entry,
             initial_sp: stack_top,
-            initial_pc,
+            initial_pc: entry_pc,
+            spawn_arg: arg,
             ..Task::empty()
         };
     });
@@ -209,9 +241,9 @@ pub fn create_task(name: &str, entry: TaskEntry) -> Option<usize> {
     write_name(&printed_name);
     print_hex_field(" stack: ", stack_start);
     print_hex_field(" - ", stack_top);
-    print_hex_field(" entry: ", initial_pc);
+    print_hex_field(" entry: ", entry_pc);
     print_hex_field(" initial_sp: ", stack_top);
-    print_hex_field(" initial_pc: ", initial_pc);
+    print_hex_field(" initial_pc: ", entry_pc);
     uart::write_line("");
 
     Some(slot)
@@ -270,10 +302,6 @@ pub fn get_task_name(id: usize) -> Option<[u8; TASK_NAME_LEN]> {
     with_task(id, |task| task.name)
 }
 
-pub fn get_task_entry(id: usize) -> Option<TaskEntry> {
-    with_task(id, |task| task.entry)?
-}
-
 pub fn get_task_stack_start(id: usize) -> Option<u64> {
     with_task(id, |task| task.stack_start)
 }
@@ -288,6 +316,10 @@ pub fn get_task_initial_sp(id: usize) -> Option<u64> {
 
 pub fn get_task_initial_pc(id: usize) -> Option<u64> {
     with_task(id, |task| task.initial_pc)
+}
+
+pub fn get_task_spawn_arg(id: usize) -> Option<u64> {
+    with_task(id, |task| task.spawn_arg)
 }
 
 pub fn find_next_dispatchable_after(current_id: Option<usize>) -> Option<usize> {
@@ -324,6 +356,7 @@ const fn can_transition_from(state: TaskState, transition: TaskLifecycleTransiti
         TaskLifecycleTransition::Start => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Yield => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Sleep => matches!(state, TaskState::Ready | TaskState::Running),
+        TaskLifecycleTransition::Join => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Exit => matches!(state, TaskState::Ready | TaskState::Running),
         TaskLifecycleTransition::Fault => matches!(state, TaskState::Ready | TaskState::Running),
     }
@@ -449,11 +482,14 @@ pub fn print_task_return_kind(kind: TaskReturnKind) {
         TaskReturnKind::Yield => uart::write_str("Yield"),
         TaskReturnKind::Sleep => uart::write_str("Sleep"),
         TaskReturnKind::Fault => uart::write_str("Fault"),
+        TaskReturnKind::Join => uart::write_str("Join"),
     }
 }
 
 pub fn is_sp_inside_task_stack(id: usize, sp: u64) -> Option<bool> {
-    with_task(id, |task| sp >= task.stack_start && sp < task.stack_top)
+    // Descending ABI: empty `sp` equals `stack_top` (one past the last used
+    // byte). A timer can preempt the trampoline before the worker prologue.
+    with_task(id, |task| sp >= task.stack_start && sp <= task.stack_top)
 }
 
 pub fn can_task_resume(id: usize) -> Option<bool> {
@@ -502,10 +538,7 @@ pub fn is_task_ready(id: usize) -> bool {
 pub fn is_resumable_task(id: usize) -> bool {
     is_task_ready(id)
         && matches!(can_task_resume(id), Some(true))
-        && matches!(
-            get_task_return_kind(id),
-            Some(TaskReturnKind::Yield | TaskReturnKind::Sleep)
-        )
+        && get_task_trap_image(id).is_some()
         && is_resume_frame_safe_for_task(id)
 }
 
@@ -550,18 +583,6 @@ pub fn print_task_fault_reason(reason: TaskFaultReason) {
     }
 }
 
-pub fn is_task_finished(id: usize) -> bool {
-    matches!(get_task_state(id), Some(TaskState::Finished))
-}
-
-pub fn is_task_faulted(id: usize) -> bool {
-    matches!(get_task_state(id), Some(TaskState::Faulted))
-}
-
-pub fn is_terminal_task(id: usize) -> bool {
-    is_task_finished(id) || is_task_faulted(id)
-}
-
 pub fn has_dispatchable_tasks() -> bool {
     snapshot_tasks()
         .iter()
@@ -576,6 +597,7 @@ pub fn mark_task_finished(id: usize) -> bool {
         task.state = TaskState::Finished;
         task.last_return_kind = TaskReturnKind::Exit;
         task.can_resume = false;
+        task.block = None;
         true
     })
     .unwrap_or(false)
@@ -593,6 +615,75 @@ pub fn mark_task_ready_after_yield(id: usize) -> bool {
         true
     })
     .unwrap_or(false)
+}
+
+pub fn mark_task_blocked_join(id: usize, target: TaskId) -> bool {
+    with_task_mut(id, |task| {
+        if !can_transition_from(task.state, TaskLifecycleTransition::Join) {
+            return false;
+        }
+
+        task.state = TaskState::Blocked;
+        task.last_return_kind = TaskReturnKind::Join;
+        task.can_resume = false;
+        task.block = Some(BlockReason::Join(target));
+        true
+    })
+    .unwrap_or(false)
+}
+
+pub fn has_join_waiter(target: TaskId) -> bool {
+    find_join_waiter(target).is_some()
+}
+
+fn find_join_waiter(target: TaskId) -> Option<TaskId> {
+    snapshot_tasks().iter().find_map(|task| {
+        if !matches!(task.state, TaskState::Blocked) {
+            return None;
+        }
+        match task.block {
+            Some(BlockReason::Join(tid)) if tid == target => Some(task.id),
+            _ => None,
+        }
+    })
+}
+
+pub fn join_status(id: TaskId) -> Option<u64> {
+    match get_task_state(id)? {
+        TaskState::Finished => Some(0),
+        TaskState::Faulted => Some(1),
+        _ => None,
+    }
+}
+
+/// If `target` is a zombie with a joiner, copy status into the joiner's
+/// saved `a0`, Ready that joiner, and `destroy` the zombie.
+pub fn join_wake(target: TaskId) -> bool {
+    let Some(status) = join_status(target) else {
+        return false;
+    };
+    let Some(joiner) = find_join_waiter(target) else {
+        return false;
+    };
+
+    let _ = with_task_mut(joiner, |task| {
+        if let Some(image) = task.trap_image.as_mut() {
+            image.gpr.a0 = status;
+        }
+        task.state = TaskState::Ready;
+        task.block = None;
+        task.last_return_kind = TaskReturnKind::Join;
+    });
+
+    let can_resume = is_resume_frame_safe_for_task(joiner);
+    let _ = with_task_mut(joiner, |task| {
+        task.can_resume = can_resume;
+        if !can_resume {
+            task.last_return_kind = TaskReturnKind::None;
+        }
+    });
+
+    destroy(target)
 }
 
 pub fn mark_task_blocked_until(id: usize, wake_tick: u64) -> bool {
@@ -661,6 +752,7 @@ pub fn mark_task_faulted(id: usize) -> bool {
         task.state = TaskState::Faulted;
         task.last_return_kind = TaskReturnKind::Fault;
         task.can_resume = false;
+        task.block = None;
         true
     })
     .unwrap_or(false)

@@ -1,28 +1,28 @@
 use crate::drivers::uart;
 mod bootstrap;
-use crate::kernel::task::table::{create_task, print_tasks};
+use crate::kernel::task::table::{print_tasks, spawn};
 
 #[cfg(feature = "scenario_reap")]
 pub fn test_tasks() {
     crate::kernel::task::table::init();
 
-    let _ = create_task("idle", idle_task);
+    let _ = spawn("idle", idle_task, 0);
     bootstrap::print_task_zero_context_guard();
-    let _ = create_task("worker-a", worker_a_task);
-    let _ = create_task("worker-b", worker_b_task);
+    let _ = spawn("worker-a", worker_a_task, 0);
+    let _ = spawn("worker-b", worker_b_task, 0);
 
     print_tasks();
 }
 
-fn idle_task() {
+extern "C" fn idle_task(_arg: u64) {
     uart::write_line("idle_task: running");
 }
 
-fn worker_a_task() {
+extern "C" fn worker_a_task(_arg: u64) {
     uart::write_line("worker_a_task: running");
 }
 
-fn worker_b_task() {
+extern "C" fn worker_b_task(_arg: u64) {
     uart::write_line("worker_b_task: running");
 }
 
@@ -35,34 +35,34 @@ pub fn spawn_default_image() {
 
     #[cfg(feature = "scenario_resume")]
     {
-        let _ = create_task("worker-resume", crate::user::worker_two_yield);
+        let _ = spawn("worker-resume", crate::user::worker_two_yield, 0);
         uart::write_line("resume image: U-mode two-yield worker");
     }
 
     #[cfg(feature = "scenario_handoff")]
     {
-        let _ = create_task("worker-a", crate::user::worker_handoff_a);
-        let _ = create_task("worker-b", crate::user::worker_handoff_b);
+        let _ = spawn("worker-a", crate::user::worker_handoff_a, 0);
+        let _ = spawn("worker-b", crate::user::worker_handoff_b, 0);
         uart::write_line("handoff image: two U-mode yield workers");
     }
 
     #[cfg(feature = "scenario_fault")]
     {
-        let _ = create_task("worker-a", crate::user::worker_clean_exit);
-        let _ = create_task("trap-worker", crate::user::worker_ebreak);
-        let _ = create_task("fetch-probe", crate::user::worker_kernel_fetch);
+        let _ = spawn("worker-a", crate::user::worker_clean_exit, 0);
+        let _ = spawn("trap-worker", crate::user::worker_ebreak, 0);
+        let _ = spawn("fetch-probe", crate::user::worker_kernel_fetch, 0);
         uart::write_line("fault image: exit worker + U-mode ebreak");
     }
 
     #[cfg(feature = "scenario_sleep")]
     {
-        let _ = create_task("worker-sleep", crate::user::worker_sleep_e2e);
+        let _ = spawn("worker-sleep", crate::user::worker_sleep_e2e, 0);
         uart::write_line("sleep image: U-mode sleep then exit");
     }
 
     #[cfg(feature = "scenario_preempt")]
     {
-        let _ = create_task("worker-yield", crate::user::worker_yield_main);
+        let _ = spawn("worker-yield", crate::user::worker_yield_main, 0);
         uart::write_line("preempt image: U-mode yield loop");
     }
 
@@ -74,13 +74,15 @@ pub fn spawn_default_image() {
         feature = "scenario_preempt"
     )))]
     {
-        let _ = create_task("worker-yield", crate::user::worker_yield_main);
-        let _ = create_task("worker-sleep", crate::user::worker_sleep_main);
-        let _ = create_task("worker-pmp-deny", crate::user::worker_pmp_deny);
-        uart::write_line("default image: idle + worker_yield + worker_sleep");
+        let _ = spawn("worker-yield", crate::user::worker_yield_main, 0);
+        let _ = spawn("worker-sleep", crate::user::worker_sleep_main, 0);
+        let _ = spawn("worker-pmp-deny", crate::user::worker_pmp_deny, 0);
+        let _ = spawn("worker-spawn", crate::user::worker_spawn_main, 0);
+        uart::write_line("default image: idle + yield + sleep + pmp-deny + spawn");
     }
 
+    crate::kernel::task::scheduler::capture_default_join_baseline();
     print_tasks();
 }
 
-const _: &[fn()] = &[idle_task, worker_a_task, worker_b_task];
+const _: &[extern "C" fn(u64)] = &[idle_task, worker_a_task, worker_b_task];
