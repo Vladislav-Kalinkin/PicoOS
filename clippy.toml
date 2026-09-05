@@ -9,7 +9,7 @@
 # kernel: indexing, integer arithmetic, as-casts). Individual restriction
 # lints are denied from Cargo.toml [lints.clippy].
 
-msrv = "1.97.1"
+msrv = "1.98.1"
 avoid-breaking-exported-api = false
 
 # Groups (pedantic/nursery/cargo plus selected restriction lints) are denied

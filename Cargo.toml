@@ -2,7 +2,7 @@
 name = "PicoOS"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.97.1"
+rust-version = "1.98.1"
 
 [[bin]]
 name = "PicoOS"
@@ -15,6 +15,11 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+strip = "symbols"
+debug = false
 
 [features]
 # Public scenario selectors. Always-on: U-mode mret, timer preemption via
