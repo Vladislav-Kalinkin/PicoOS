@@ -1,13 +1,13 @@
 use crate::drivers::uart;
 use crate::kernel::cpu;
-use crate::kernel::irq_cell::IrqCell;
+use core::sync::atomic::{AtomicBool, Ordering};
 use crate::kernel::sys;
 use crate::kernel::task::table::{self, BlockReason, TaskId, TaskReturnKind, TaskState};
 use crate::kernel::trap_frame::Riscv64TrapFrame;
 
 pub const IPC_PAYLOAD_MAX: u64 = 32;
 
-static RENDEZVOUS_PRINTED: IrqCell<bool> = IrqCell::new(false);
+static RENDEZVOUS_PRINTED: AtomicBool = AtomicBool::new(false);
 
 pub fn sys_send(frame: &mut Riscv64TrapFrame) {
     let Some(self_id) = cpu::current() else {
@@ -207,11 +207,7 @@ fn copy_kernel_to_user(src: &[u8; 32], dst: u64, len: usize) {
 }
 
 fn note_rendezvous() {
-    let already = RENDEZVOUS_PRINTED.with(|printed| {
-        let already = *printed;
-        *printed = true;
-        already
-    });
+    let already = RENDEZVOUS_PRINTED.swap(true, Ordering::AcqRel);
     if !already {
         uart::write_line("ipc rendezvous: OK");
     }

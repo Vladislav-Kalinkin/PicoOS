@@ -1,37 +1,25 @@
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
 use crate::drivers::uart;
-use crate::kernel::irq_cell::IrqCell;
+use crate::kernel::hart_local::HartLocal;
 use crate::kernel::task::table as task;
 use crate::kernel::trap_frame::TrapImage;
 
-static CURRENT_TASK_ID: IrqCell<Option<usize>> = IrqCell::new(None);
-static DEFAULT_SEEN_YIELD: IrqCell<bool> = IrqCell::new(false);
-static DEFAULT_SEEN_SLEEP: IrqCell<bool> = IrqCell::new(false);
-static DEFAULT_MARKER_PRINTED: IrqCell<bool> = IrqCell::new(false);
-static U_YIELDS: IrqCell<u32> = IrqCell::new(0);
-static U_EXITS: IrqCell<u32> = IrqCell::new(0);
-static SEEN_FAULT: IrqCell<bool> = IrqCell::new(false);
-static SCENARIO_MARKER_PRINTED: IrqCell<bool> = IrqCell::new(false);
-static JOIN_LEAK_BASELINE: IrqCell<Option<u64>> = IrqCell::new(None);
-static JOIN_LEAK_PRINTED: IrqCell<bool> = IrqCell::new(false);
-
-pub fn current_task_id() -> Option<usize> {
-    CURRENT_TASK_ID.with(|id| *id)
-}
+static DEFAULT_SEEN_YIELD: AtomicBool = AtomicBool::new(false);
+static DEFAULT_SEEN_SLEEP: AtomicBool = AtomicBool::new(false);
+static DEFAULT_MARKER_PRINTED: AtomicBool = AtomicBool::new(false);
+static U_YIELDS: AtomicU32 = AtomicU32::new(0);
+static U_EXITS: AtomicU32 = AtomicU32::new(0);
+static SEEN_FAULT: AtomicBool = AtomicBool::new(false);
+static SCENARIO_MARKER_PRINTED: AtomicBool = AtomicBool::new(false);
+static JOIN_LEAK_BASELINE: HartLocal<Option<u64>> = HartLocal::new(None);
+static JOIN_LEAK_PRINTED: AtomicBool = AtomicBool::new(false);
 
 pub fn print_task_name(id: usize) {
     task::print_task_name_by_id(id);
 }
 
-fn force_current_task(id: usize) {
-    if !task::mark_task_running(id) {
-        return;
-    }
-
-    CURRENT_TASK_ID.with(|current| *current = Some(id));
-}
-
 pub fn switch_to_idle() {
-    CURRENT_TASK_ID.with(|id| *id = None);
     crate::kernel::cpu::clear_current();
 }
 
@@ -63,7 +51,7 @@ pub fn next_after(after: Option<usize>) -> Option<usize> {
 }
 
 fn arm_worker_for_mret(task_id: usize, fresh: bool) {
-    force_current_task(task_id);
+    let _ = task::mark_task_running(task_id);
 
     let Some(stack_start) = task::get_task_stack_start(task_id) else {
         crate::arch::halt();
@@ -118,7 +106,7 @@ pub fn switch_after(after: Option<usize>) -> ! {
 
 /// Boot entry: first dispatch from kernel context (not a trap frame).
 pub fn run() -> ! {
-    match next_after(current_task_id()) {
+    match next_after(crate::kernel::cpu::current()) {
         None => idle_loop(),
         Some(id) => mret_to_task(id),
     }
@@ -127,18 +115,18 @@ pub fn run() -> ! {
 pub fn note_default_image_return(kind: crate::kernel::task::table::TaskReturnKind) {
     match kind {
         crate::kernel::task::table::TaskReturnKind::Yield => {
-            DEFAULT_SEEN_YIELD.with(|seen| *seen = true);
-            U_YIELDS.with(|count| *count = count.saturating_add(1));
+            DEFAULT_SEEN_YIELD.store(true, Ordering::Release);
+            let _ = U_YIELDS.fetch_add(1, Ordering::AcqRel);
         }
         crate::kernel::task::table::TaskReturnKind::Sleep => {
-            DEFAULT_SEEN_SLEEP.with(|seen| *seen = true);
+            DEFAULT_SEEN_SLEEP.store(true, Ordering::Release);
         }
         crate::kernel::task::table::TaskReturnKind::Exit => {
-            U_EXITS.with(|count| *count = count.saturating_add(1));
+            let _ = U_EXITS.fetch_add(1, Ordering::AcqRel);
             try_print_scenario_markers();
         }
         crate::kernel::task::table::TaskReturnKind::Fault => {
-            SEEN_FAULT.with(|seen| *seen = true);
+            SEEN_FAULT.store(true, Ordering::Release);
             try_print_scenario_markers();
         }
         crate::kernel::task::table::TaskReturnKind::None
@@ -147,24 +135,22 @@ pub fn note_default_image_return(kind: crate::kernel::task::table::TaskReturnKin
         | crate::kernel::task::table::TaskReturnKind::Recv => {}
     }
 
-    let yield_seen = DEFAULT_SEEN_YIELD.with(|seen| *seen);
-    let sleep_seen = DEFAULT_SEEN_SLEEP.with(|seen| *seen);
-    let already = DEFAULT_MARKER_PRINTED.with(|printed| *printed);
-    if yield_seen && sleep_seen && !already {
-        DEFAULT_MARKER_PRINTED.with(|printed| *printed = true);
+    let yield_seen = DEFAULT_SEEN_YIELD.load(Ordering::Acquire);
+    let sleep_seen = DEFAULT_SEEN_SLEEP.load(Ordering::Acquire);
+    if yield_seen && sleep_seen && !DEFAULT_MARKER_PRINTED.swap(true, Ordering::AcqRel) {
         uart::write_line("default scheduler: yield and sleep OK");
     }
 }
 
 fn try_print_scenario_markers() {
-    if SCENARIO_MARKER_PRINTED.with(|printed| *printed) {
+    if SCENARIO_MARKER_PRINTED.load(Ordering::Acquire) {
         return;
     }
 
-    let yields = U_YIELDS.with(|count| *count);
-    let exits = U_EXITS.with(|count| *count);
-    let faulted = SEEN_FAULT.with(|seen| *seen);
-    let slept = DEFAULT_SEEN_SLEEP.with(|seen| *seen);
+    let yields = U_YIELDS.load(Ordering::Acquire);
+    let exits = U_EXITS.load(Ordering::Acquire);
+    let faulted = SEEN_FAULT.load(Ordering::Acquire);
+    let slept = DEFAULT_SEEN_SLEEP.load(Ordering::Acquire);
 
     let plan = crate::kernel::contract::plan();
     let marker = if (plan == crate::kernel::contract::BootContract::Resume
@@ -185,8 +171,9 @@ fn try_print_scenario_markers() {
         None
     };
 
-    if let Some(line) = marker {
-        SCENARIO_MARKER_PRINTED.with(|printed| *printed = true);
+    if let Some(line) = marker
+        && !SCENARIO_MARKER_PRINTED.swap(true, Ordering::AcqRel)
+    {
         uart::write_line(line);
     }
 }
@@ -204,11 +191,7 @@ pub fn note_join_reap() {
     if crate::kernel::memory::stats().used != baseline {
         return;
     }
-    let already = JOIN_LEAK_PRINTED.with(|printed| {
-        let already = *printed;
-        *printed = true;
-        already
-    });
+    let already = JOIN_LEAK_PRINTED.swap(true, Ordering::AcqRel);
     if already {
         return;
     }

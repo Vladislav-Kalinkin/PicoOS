@@ -1,7 +1,7 @@
 use crate::drivers::uart;
-use crate::kernel::irq_cell::IrqCell;
+use core::sync::atomic::{AtomicBool, Ordering};
 
-static USER_TEXT_FETCH_DENY_PRINTED: IrqCell<bool> = IrqCell::new(false);
+static USER_TEXT_FETCH_DENY_PRINTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TrapFaultClassification {
@@ -117,11 +117,7 @@ pub fn record_and_switch_user_fault(mcause: u64, mepc: u64, mtval: u64) -> ! {
         crate::kernel::task::table::TaskFaultReason::InstructionAccessFault
     ) && crate::kernel::memory::is_inside_kernel_text(mtval)
     {
-        let already = USER_TEXT_FETCH_DENY_PRINTED.with(|printed| {
-            let already = *printed;
-            *printed = true;
-            already
-        });
+        let already = USER_TEXT_FETCH_DENY_PRINTED.swap(true, Ordering::AcqRel);
         if !already {
             crate::drivers::uart::write_line("user text: kernel fetch deny OK");
         }

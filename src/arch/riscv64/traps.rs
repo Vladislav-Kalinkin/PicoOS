@@ -158,7 +158,7 @@ fn print_timer_tick_if_verbose(
     uart::write_dec_u64(woke_tasks as u64);
 
     uart::write_str(" context:");
-    match crate::kernel::task::scheduler::current_task_id() {
+    match crate::kernel::cpu::current() {
         Some(id) => crate::kernel::task::print_task_full_context_by_id(id),
         None => uart::write_str(" none"),
     }

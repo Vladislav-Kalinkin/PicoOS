@@ -2,7 +2,7 @@ pub mod banner;
 pub mod contract;
 pub mod cpu;
 pub mod ipc;
-pub mod irq_cell;
+pub mod hart_local;
 pub mod log;
 pub mod memory;
 pub mod sys;

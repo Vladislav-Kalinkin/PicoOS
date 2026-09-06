@@ -1,5 +1,6 @@
+use core::sync::atomic::{AtomicU8, Ordering};
+
 use crate::drivers::uart;
-use crate::kernel::irq_cell::IrqCell;
 
 #[used]
 #[unsafe(no_mangle)]
@@ -57,14 +58,14 @@ impl BootContract {
     }
 }
 
-static PLAN: IrqCell<BootContract> = IrqCell::new(BootContract::Default);
+static PLAN: AtomicU8 = AtomicU8::new(BootContract::Default as u8);
 
 pub fn plan() -> BootContract {
-    PLAN.with(|plan| *plan)
+    BootContract::from_byte(PLAN.load(Ordering::Acquire))
 }
 
 pub fn set_plan(contract: BootContract) {
-    PLAN.with(|plan| *plan = contract);
+    PLAN.store(contract as u8, Ordering::Release);
 }
 
 fn boot_contract_byte() -> u8 {

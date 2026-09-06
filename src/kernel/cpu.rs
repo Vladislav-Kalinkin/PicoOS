@@ -1,4 +1,4 @@
-use crate::kernel::irq_cell::IrqCell;
+use crate::kernel::hart_local::HartLocal;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TrapExecutionContext {
@@ -6,6 +6,7 @@ pub enum TrapExecutionContext {
     Task,
 }
 
+#[derive(Clone, Copy)]
 pub struct Cpu {
     current: Option<usize>,
     kernel_sp_before_task: u64,
@@ -24,7 +25,7 @@ impl Cpu {
     }
 }
 
-static CPU: IrqCell<Cpu> = IrqCell::new(Cpu::new());
+static CPU: HartLocal<Cpu> = HartLocal::new(Cpu::new());
 
 pub fn current() -> Option<usize> {
     CPU.with(|cpu| cpu.current)
@@ -32,10 +33,12 @@ pub fn current() -> Option<usize> {
 
 pub fn set_current(id: usize) {
     CPU.with(|cpu| cpu.current = Some(id));
+    crate::kernel::hart_local::publish_u_tid(id as u64);
 }
 
 pub fn clear_current() {
     CPU.with(|cpu| cpu.current = None);
+    crate::kernel::hart_local::clear_u_tid();
 }
 
 pub fn trap_execution_context() -> TrapExecutionContext {

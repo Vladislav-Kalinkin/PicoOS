@@ -1,5 +1,5 @@
 use crate::drivers::uart;
-use crate::kernel::irq_cell::IrqCell;
+use crate::kernel::hart_local::HartLocal;
 use crate::kernel::memory;
 use crate::kernel::trap_frame::TrapImage;
 
@@ -121,7 +121,7 @@ impl Task {
     }
 }
 
-static TASKS: IrqCell<[Task; MAX_TASKS]> = IrqCell::new([Task::empty(); MAX_TASKS]);
+static TASKS: HartLocal<[Task; MAX_TASKS]> = HartLocal::new([Task::empty(); MAX_TASKS]);
 
 fn snapshot_tasks() -> [Task; MAX_TASKS] {
     TASKS.with(|tasks| *tasks)

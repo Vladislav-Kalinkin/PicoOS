@@ -1,5 +1,5 @@
 use crate::drivers::uart;
-use crate::kernel::irq_cell::IrqCell;
+use crate::kernel::hart_local::HartLocal;
 use crate::platform;
 
 pub const PAGE_SIZE: u64 = 4096;
@@ -64,6 +64,7 @@ pub struct MmStats {
     pub high_water: u64,
 }
 
+#[derive(Clone, Copy)]
 struct MmState {
     bitmap: [u64; BITMAP_WORDS],
     base: u64,
@@ -72,7 +73,7 @@ struct MmState {
     high_water: u64,
 }
 
-static MM: IrqCell<MmState> = IrqCell::new(MmState {
+static MM: HartLocal<MmState> = HartLocal::new(MmState {
     bitmap: [0; BITMAP_WORDS],
     base: 0,
     nbits: 0,
@@ -178,7 +179,7 @@ pub fn free_pages(base: PhysPage, n: usize) {
         }
 
         // Poison while the bits are still allocated so a concurrent alloc
-        // cannot observe the page mid-wipe. Uniprocessor + IrqCell.
+        // cannot observe the page mid-wipe. This hart, IRQs off.
         #[cfg(debug_assertions)]
         poison_pages(base.addr, n);
 
@@ -495,7 +496,7 @@ fn poison_pages(addr: u64, n: usize) {
         return;
     };
     // SAFETY: pages are still marked used in the bitmap. Exclusive to this
-    // hart under IrqCell (IRQs off). Range is page-aligned RAM in the pool.
+    // hart under HartLocal (IRQs off). Range is page-aligned RAM in the pool.
     unsafe {
         core::ptr::write_bytes(addr as *mut u8, FREE_POISON, bytes as usize);
     }

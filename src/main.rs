@@ -80,8 +80,7 @@ fn arm_timer() {
     uart::write_line("");
 }
 
-static PANICKING: crate::kernel::irq_cell::IrqCell<bool> =
-    crate::kernel::irq_cell::IrqCell::new(false);
+static PANICKING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 struct UartFmtWrite;
 
@@ -94,11 +93,7 @@ impl core::fmt::Write for UartFmtWrite {
 
 #[panic_handler]
 fn panic(info: &PanicInfo<'_>) -> ! {
-    let already = PANICKING.with(|flag| {
-        let already = *flag;
-        *flag = true;
-        already
-    });
+    let already = PANICKING.swap(true, core::sync::atomic::Ordering::AcqRel);
     if already {
         arch::halt();
     }
