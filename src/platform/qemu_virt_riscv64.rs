@@ -13,4 +13,8 @@ pub const TIMEBASE_FREQ: u64 = 10_000_000;
 pub const RAM_START: usize = 0x8000_0000;
 pub const RAM_SIZE: usize = 128 * 1024 * 1024;
 
+/// QEMU virt topology bound (like `PMP_ENTRIES`), not a software `MAX_TASKS`.
+/// `mhartid >= HART_SLOTS` parks forever in `boot.S` and must not index tables.
+pub const HART_SLOTS: usize = 8;
+
 pub const NAME: &str = "QEMU virt riscv64";

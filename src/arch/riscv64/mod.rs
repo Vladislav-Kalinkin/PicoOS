@@ -1,4 +1,5 @@
 use core::arch::asm;
+use core::sync::atomic::AtomicU8;
 
 pub mod cpu;
 pub mod ecall;
@@ -6,6 +7,22 @@ pub mod pmp;
 pub mod restore;
 pub mod timer;
 pub mod traps;
+
+const _: () = assert!(crate::platform::HART_SLOTS == 8);
+
+/// Per-slot go flag. Hart 0 writes 1 after bring-up (PR9). Secondaries
+/// busy-load their byte. `boot.S` indexes this as a byte table.
+#[used]
+#[unsafe(no_mangle)]
+static HART_GO: [AtomicU8; crate::platform::HART_SLOTS] =
+    [const { AtomicU8::new(0) }; crate::platform::HART_SLOTS];
+
+/// Per-slot presence. In-range secondaries store 1 every park iteration.
+/// PR1 does not sample this; hart 0 prints `harts present: 1`.
+#[used]
+#[unsafe(no_mangle)]
+static HART_PRESENT: [AtomicU8; crate::platform::HART_SLOTS] =
+    [const { AtomicU8::new(0) }; crate::platform::HART_SLOTS];
 
 pub use cpu::without_interrupts;
 
@@ -93,6 +110,14 @@ pub fn print_cpu_info() {
     crate::drivers::uart::write_str("mhartid: ");
     crate::drivers::uart::write_hex_u64(cpu::mhartid());
     crate::drivers::uart::write_line("");
+
+    // Keep the boot.S tables live in the crate (asm loads the symbols).
+    let _ = core::ptr::addr_of!(HART_GO);
+    let _ = core::ptr::addr_of!(HART_PRESENT);
+
+    // PR1 park smoke: do not wait on HART_PRESENT. Secondaries must not run
+    // `kernel_main`; the UART contract is exactly one hart in the kernel.
+    crate::drivers::uart::write_line("harts present: 1");
 
     crate::drivers::uart::write_str("mstatus: ");
     crate::drivers::uart::write_hex_u64(cpu::mstatus());

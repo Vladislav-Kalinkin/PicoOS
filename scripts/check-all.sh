@@ -86,6 +86,7 @@ scripts/test-mm-reap-riscv.sh
 scripts/test-kernel-fault-guard-riscv.sh
 scripts/test-ipc-riscv.sh
 scripts/test-user-text-riscv.sh
+scripts/test-hart-park-riscv.sh
 
 echo
 echo "== All checks passed =="

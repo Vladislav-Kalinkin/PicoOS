@@ -85,16 +85,27 @@ python3 -c 'import sys; n=int(sys.argv[1]); b=int(sys.argv[2]); open(sys.argv[3]
 
 mkfifo "$log_pipe"
 
+smp=${QEMU_SMP:-1}
+banner_limit=${QEMU_BANNER_LIMIT:-}
+
 qemu-system-riscv64 \
   -machine virt \
+  -smp "$smp" \
+  -m 128M \
   -nographic \
   -bios none \
   -kernel "$kernel_copy" \
   >"$log_pipe" 2>&1 &
 qemu_pid=$!
 status=1
+picoos_count=0
+settle_pid=
 
 cleanup() {
+  if [[ -n "${settle_pid:-}" ]]; then
+    kill "$settle_pid" 2>/dev/null || true
+    wait "$settle_pid" 2>/dev/null || true
+  fi
   kill "$qemu_pid" 2>/dev/null || true
   wait "$qemu_pid" 2>/dev/null || true
   rm -rf "$tmp_dir"
@@ -111,8 +122,26 @@ while IFS= read -r line; do
   printf '%s\n' "$line"
   clean_line=${line%$'\r'}
 
+  if [[ "$clean_line" == *"PicoOS"* ]]; then
+    picoos_count=$((picoos_count + 1))
+    if [[ -n "$banner_limit" && "$picoos_count" -gt "$banner_limit" ]]; then
+      status=1
+      break
+    fi
+  fi
+
   if [[ "$clean_line" == "$marker" ]]; then
     status=0
+    if [[ -n "$banner_limit" ]]; then
+      if [[ -z "${settle_pid:-}" ]]; then
+        (
+          sleep 2
+          kill "$qemu_pid" 2>/dev/null || true
+        ) &
+        settle_pid=$!
+      fi
+      continue
+    fi
     break
   fi
 

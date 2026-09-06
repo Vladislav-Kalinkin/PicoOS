@@ -13,6 +13,7 @@ pub fn print_capabilities() {
     uart::write_line("- architecture: riscv64");
     uart::write_line("- UART console");
     uart::write_line("- U-mode frames");
+    uart::write_line("- extra harts parked until GO");
     uart::write_line("- PMP: U-X only .usertext (kernel .text fetch faults the task)");
     uart::write_line("- ecall yield/sleep/exit/log/spawn/join/send/recv/gettid");
     uart::write_line("- timer preemption via mret");
