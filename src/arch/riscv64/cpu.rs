@@ -8,6 +8,7 @@ pub const MSTATUS_MPP_U: u64 = 0;
 pub const MSTATUS_MPRV: u64 = 1 << 17;
 pub const MSTATUS_FS: u64 = 0b11 << 13;
 pub const MIE_MTIE: u64 = 1 << 7;
+pub const MIE_MSIE: u64 = 1 << 3;
 
 macro_rules! csr_read {
     ($name:ident, $csr:literal) => {
@@ -138,6 +139,14 @@ pub fn enable_machine_timer_interrupt() {
     // SAFETY: M-mode `csrs mie.MTIE`.
     unsafe {
         asm!("csrs mie, {0}", in(reg) MIE_MTIE, options(nomem, nostack));
+    }
+}
+
+#[inline(always)]
+pub fn enable_machine_software_interrupt() {
+    // SAFETY: M-mode `csrs mie.MSIE`.
+    unsafe {
+        asm!("csrs mie, {0}", in(reg) MIE_MSIE, options(nomem, nostack));
     }
 }
 

@@ -48,7 +48,11 @@ trap_vector:
     call riscv64_trap_handler
 
 trap_return:
-    la t6, __trap_stack_top
+    csrr t5, mhartid
+    slli t5, t5, 3
+    la t6, HART_TRAP_TOP
+    add t6, t6, t5
+    ld t6, 0(t6)
     csrw mscratch, t6
 
     ld ra, 8(sp)

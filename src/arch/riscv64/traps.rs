@@ -22,6 +22,11 @@ pub extern "C" fn riscv64_trap_handler(frame: *mut Riscv64TrapFrame) {
         handle_timer_interrupt(frame);
     }
 
+    if is_interrupt && code == 3 {
+        handle_machine_software_interrupt();
+        return;
+    }
+
     if !is_interrupt && code == 8 {
         crate::kernel::sys::handle_ecall(frame);
         return;
@@ -74,7 +79,11 @@ fn handle_timer_interrupt(frame: &Riscv64TrapFrame) -> ! {
         let _ = crate::kernel::task::table::save_preempted_trap_image(id, &image);
     }
 
-    let tick = crate::kernel::ticks::increment();
+    let tick = if cpu::mhartid() == 0 {
+        crate::kernel::ticks::increment()
+    } else {
+        crate::kernel::ticks::get()
+    };
     let woke_tasks = crate::kernel::task::wake_sleeping_tasks(tick);
     let next = crate::kernel::task::scheduler::next_after(interrupted_worker);
 
@@ -97,6 +106,15 @@ fn handle_timer_interrupt(frame: &Riscv64TrapFrame) -> ! {
     }
 
     crate::kernel::task::scheduler::switch_to(next);
+}
+
+fn handle_machine_software_interrupt() {
+    let hart = cpu::mhartid() as usize;
+    // SAFETY: `clint_msip(hart)` is this hart's 32-bit MSIP word. PR3 stub
+    // clears it and returns to `trap_return` (same frame; no `switch_after`).
+    unsafe {
+        crate::drivers::mmio::write32(crate::platform::clint_msip(hart), 0);
+    }
 }
 
 fn handle_kernel_fault(frame: &Riscv64TrapFrame) -> ! {

@@ -33,6 +33,10 @@ clear_trap_stack_loop:
     j clear_trap_stack_loop
 
 clear_trap_stack_done:
+    /* Slot 0 trap top is the linker stack; trap_return indexes HART_TRAP_TOP. */
+    la t0, HART_TRAP_TOP
+    la t1, __trap_stack_top
+    sd t1, 0(t0)
     call kernel_main
 
 hang:

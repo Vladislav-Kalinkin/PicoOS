@@ -5,8 +5,15 @@ pub const UART0_LSR: usize = UART0_BASE + 5;
 pub const UART_LSR_THRE: u8 = 1 << 5;
 
 pub const CLINT_BASE: usize = 0x0200_0000;
-pub const CLINT_MTIMECMP: usize = CLINT_BASE + 0x4000;
 pub const CLINT_MTIME: usize = CLINT_BASE + 0xBFF8;
+
+pub const fn clint_msip(hart: usize) -> usize {
+    CLINT_BASE + 4 * hart
+}
+
+pub const fn clint_mtimecmp(hart: usize) -> usize {
+    CLINT_BASE + 0x4000 + 8 * hart
+}
 
 pub const TIMEBASE_FREQ: u64 = 10_000_000;
 

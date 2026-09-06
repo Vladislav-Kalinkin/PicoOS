@@ -6,7 +6,8 @@ pub fn mtime() -> u64 {
 }
 
 pub fn set_mtimecmp(value: u64) {
-    mmio::write64(platform::CLINT_MTIMECMP, value);
+    let hart = super::cpu::mhartid() as usize;
+    mmio::write64(platform::clint_mtimecmp(hart), value);
 }
 
 pub const fn timebase_frequency() -> u64 {

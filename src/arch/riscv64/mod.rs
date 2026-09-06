@@ -1,5 +1,5 @@
 use core::arch::asm;
-use core::sync::atomic::AtomicU8;
+use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
 pub mod cpu;
 pub mod ecall;
@@ -23,6 +23,13 @@ static HART_GO: [AtomicU8; crate::platform::HART_SLOTS] =
 #[unsafe(no_mangle)]
 static HART_PRESENT: [AtomicU8; crate::platform::HART_SLOTS] =
     [const { AtomicU8::new(0) }; crate::platform::HART_SLOTS];
+
+/// Per-hart trap stack top. Slot 0 is `__trap_stack_top` (set in `boot.S`).
+/// `trap.S` `trap_return` reloads `mscratch` from this table.
+#[used]
+#[unsafe(no_mangle)]
+static HART_TRAP_TOP: [AtomicU64; crate::platform::HART_SLOTS] =
+    [const { AtomicU64::new(0) }; crate::platform::HART_SLOTS];
 
 pub use cpu::without_interrupts;
 
@@ -57,12 +64,25 @@ pub fn halt() -> ! {
     }
 }
 
+fn this_hart() -> usize {
+    let hart = cpu::mhartid() as usize;
+    if hart >= crate::platform::HART_SLOTS {
+        halt();
+    }
+    hart
+}
+
 pub fn init_exceptions() {
     let trap_addr = symbol_addr(core::ptr::addr_of!(trap_vector));
+    HART_TRAP_TOP[0].store(
+        symbol_addr(core::ptr::addr_of!(__trap_stack_top)),
+        Ordering::Relaxed,
+    );
     let trap_stack_top = trap_stack_top();
 
     cpu::set_mtvec(trap_addr);
     cpu::set_mscratch(trap_stack_top);
+    cpu::enable_machine_software_interrupt();
 
     crate::drivers::uart::write_str("mtvec: ");
     crate::drivers::uart::write_hex_u64(cpu::mtvec());
@@ -74,7 +94,7 @@ pub fn init_exceptions() {
 }
 
 pub(crate) fn trap_stack_top() -> u64 {
-    symbol_addr(core::ptr::addr_of!(__trap_stack_top))
+    HART_TRAP_TOP[this_hart()].load(Ordering::Relaxed)
 }
 
 pub fn is_trap_stack_addr(addr: u64) -> bool {
