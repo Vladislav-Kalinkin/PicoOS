@@ -1,9 +1,9 @@
 use crate::drivers::uart;
 use crate::kernel::cpu;
-use core::sync::atomic::{AtomicBool, Ordering};
 use crate::kernel::sys;
 use crate::kernel::task::table::{self, BlockReason, TaskId, TaskReturnKind, TaskState};
 use crate::kernel::trap_frame::Riscv64TrapFrame;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 pub const IPC_PAYLOAD_MAX: u64 = 32;
 
@@ -15,11 +15,11 @@ pub fn sys_send(frame: &mut Riscv64TrapFrame) {
         crate::arch::halt();
     };
 
-    let dest = frame.a0 as usize;
+    let dest = TaskId(frame.a0);
     let ptr = frame.a1;
     let len = frame.a2;
 
-    if dest == self_id || len == 0 || len > IPC_PAYLOAD_MAX {
+    if dest == self_id || len == 0 || len > IPC_PAYLOAD_MAX || !dest.is_valid() {
         sys::illegal_syscall();
     }
     if !sys::user_stack_buffer_ok(ptr, len) {
@@ -91,7 +91,7 @@ fn complete_send(frame: &mut Riscv64TrapFrame, self_id: TaskId, dest: TaskId, pt
 
     copy_user(ptr, recv_ptr, n as usize);
     note_rendezvous();
-    let _ = table::ready_from_block(dest, n, self_id as u64, TaskReturnKind::Recv);
+    let _ = table::ready_from_block(dest, n, self_id.0, TaskReturnKind::Recv);
     sys::same_frame_return_a0(frame, n);
 }
 
@@ -132,7 +132,7 @@ fn try_complete_recv(
     copy_kernel_to_user(&bytes, ptr, n as usize);
     note_rendezvous();
     let _ = table::ready_from_block(sender, n64, 0, TaskReturnKind::Send);
-    sys::same_frame_return_a0_a1(frame, n64, sender as u64);
+    sys::same_frame_return_a0_a1(frame, n64, sender.0);
     true
 }
 
@@ -147,29 +147,31 @@ fn block_recv(frame: &Riscv64TrapFrame, self_id: TaskId, ptr: u64, max: u64) -> 
 }
 
 fn wake_senders_to(target: TaskId) {
-    for id in 0..table::MAX_TASKS {
-        if !matches!(table::get_task_state(id), Some(TaskState::Blocked)) {
+    let cap = table::table_capacity();
+    for local in 0..cap {
+        let Some(t) = table::get_task_by_local_index(local) else {
             continue;
-        }
-        match table::block_reason(id) {
-            Some(BlockReason::Send { to, .. }) if to == target => {
-                let _ = table::ready_from_block(id, u64::MAX, 0, TaskReturnKind::Send);
-            }
-            _ => {}
+        };
+        if t.state == TaskState::Blocked
+            && let Some(BlockReason::Send { to, .. }) = t.block
+            && to == target
+        {
+            let _ = table::ready_from_block(t.id, u64::MAX, 0, TaskReturnKind::Send);
         }
     }
 }
 
 fn wake_stranded_recvs() {
-    let mut stranded = [false; table::MAX_TASKS];
-    for (id, slot) in stranded.iter_mut().enumerate() {
-        if table::recv_buf(id).is_some() && !table::has_potential_ipc_sender(id) {
-            *slot = true;
-        }
-    }
-    for (id, is_stranded) in stranded.iter().enumerate() {
-        if *is_stranded {
-            let _ = table::ready_from_block(id, u64::MAX, u64::MAX, TaskReturnKind::Recv);
+    let cap = table::table_capacity();
+    for local in 0..cap {
+        let Some(t) = table::get_task_by_local_index(local) else {
+            continue;
+        };
+        if t.state == TaskState::Blocked
+            && table::recv_buf(t.id).is_some()
+            && !table::has_potential_ipc_sender(t.id)
+        {
+            let _ = table::ready_from_block(t.id, u64::MAX, u64::MAX, TaskReturnKind::Recv);
         }
     }
 }
@@ -181,8 +183,7 @@ fn store_pending(id: TaskId, ptr: u64, len: u8) {
 }
 
 fn copy_user(src: u64, dst: u64, len: usize) {
-    // SAFETY: caller checked `src` is on the current stack and `dst` is on
-    // the peer stack; both ranges are live PMP-RW while this hart is in M-mode.
+    // SAFETY: The caller has verified that `src` and `dst` are within the frame stacks.
     unsafe {
         let src_slice = core::slice::from_raw_parts(src as *const u8, len);
         let dst_slice = core::slice::from_raw_parts_mut(dst as *mut u8, len);
@@ -191,7 +192,7 @@ fn copy_user(src: u64, dst: u64, len: usize) {
 }
 
 fn copy_user_to_kernel(src: u64, dst: &mut [u8; 32], len: usize) {
-    // SAFETY: caller checked `src` is on the current worker stack.
+    // SAFETY: The caller has confirmed the validity of the user-stack buffer.
     unsafe {
         let src_slice = core::slice::from_raw_parts(src as *const u8, len);
         dst[..len].copy_from_slice(src_slice);
@@ -199,7 +200,7 @@ fn copy_user_to_kernel(src: u64, dst: &mut [u8; 32], len: usize) {
 }
 
 fn copy_kernel_to_user(src: &[u8; 32], dst: u64, len: usize) {
-    // SAFETY: caller checked `dst` is on the receiver stack.
+    // SAFETY: The destination address has been verified and resides on the receiving worker's stack.
     unsafe {
         let dst_slice = core::slice::from_raw_parts_mut(dst as *mut u8, len);
         dst_slice.copy_from_slice(&src[..len]);

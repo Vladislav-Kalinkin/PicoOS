@@ -85,13 +85,13 @@ impl Riscv64TrapFrame {
     }
 }
 
-/// Full resume image: GPRs plus the CSRs `trap.S` does not store.
+/// Full resume image: GPRs plus `mepc`.
+/// `mstatus` is synthesized during restore and not stored here.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TrapImage {
     pub gpr: Riscv64TrapFrame,
     pub mepc: u64,
-    pub mstatus: u64,
 }
 
 impl TrapImage {
@@ -99,16 +99,11 @@ impl TrapImage {
         Self {
             gpr: Riscv64TrapFrame::empty(),
             mepc: 0,
-            mstatus: 0,
         }
     }
 
-    pub fn from_frame(frame: &Riscv64TrapFrame, mepc: u64, mstatus: u64) -> Self {
-        Self {
-            gpr: *frame,
-            mepc,
-            mstatus,
-        }
+    pub fn from_frame(frame: &Riscv64TrapFrame, mepc: u64) -> Self {
+        Self { gpr: *frame, mepc }
     }
 
     pub const fn is_valid(&self) -> bool {

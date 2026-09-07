@@ -48,7 +48,11 @@ pub fn print_current_trap_fault_classification() {
     }
 }
 
-pub fn record_current_task_fault(mcause: u64, mepc: u64, mtval: u64) -> Option<usize> {
+pub fn record_current_task_fault(
+    mcause: u64,
+    mepc: u64,
+    mtval: u64,
+) -> Option<crate::kernel::task::table::TaskId> {
     let Some(task_id) = crate::kernel::cpu::current() else {
         crate::kernel::log::fail("fault", "record task fault with no current task");
         return None;
@@ -101,9 +105,8 @@ pub fn record_and_switch_user_fault(mcause: u64, mepc: u64, mtval: u64) -> ! {
         crate::arch::halt();
     }
 
-    let reason = crate::kernel::task::table::TaskFaultReason::from_mcause(
-        mcause & 0x7FFF_FFFF_FFFF_FFFF,
-    );
+    let reason =
+        crate::kernel::task::table::TaskFaultReason::from_mcause(mcause & 0x7FFF_FFFF_FFFF_FFFF);
     if matches!(
         reason,
         crate::kernel::task::table::TaskFaultReason::StoreAccessFault

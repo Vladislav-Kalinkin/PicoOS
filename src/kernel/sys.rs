@@ -35,11 +35,7 @@ pub fn handle_ecall(frame: &mut Riscv64TrapFrame) {
 }
 
 pub(crate) fn trap_image_after_ecall(frame: &Riscv64TrapFrame) -> TrapImage {
-    TrapImage::from_frame(
-        frame,
-        crate::arch::riscv64::cpu::mepc().wrapping_add(4),
-        crate::arch::riscv64::cpu::mstatus(),
-    )
+    TrapImage::from_frame(frame, crate::arch::riscv64::cpu::mepc().wrapping_add(4))
 }
 
 fn advance_ecall_pc() {
@@ -136,8 +132,7 @@ fn sys_spawn(frame: &mut Riscv64TrapFrame) {
         illegal_syscall();
     }
 
-    let tid =
-        crate::kernel::task::table::spawn_user(entry_pc, arg).map_or(u64::MAX, |id| id as u64);
+    let tid = crate::kernel::task::table::spawn_user(entry_pc, arg).map_or(u64::MAX, |id| id.0);
     same_frame_return_a0(frame, tid);
 }
 
@@ -147,8 +142,8 @@ fn sys_join(frame: &mut Riscv64TrapFrame) {
         crate::arch::halt();
     };
 
-    let target = frame.a0 as usize;
-    if target == self_id {
+    let target = crate::kernel::task::table::TaskId(frame.a0);
+    if !target.is_valid() || target == self_id {
         illegal_syscall();
     }
 
@@ -185,7 +180,7 @@ fn sys_gettid(frame: &mut Riscv64TrapFrame) {
         crate::arch::halt();
     };
 
-    same_frame_return_a0(frame, id as u64);
+    same_frame_return_a0(frame, id.0);
 }
 
 pub(crate) fn illegal_syscall() -> ! {

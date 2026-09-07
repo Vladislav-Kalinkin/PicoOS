@@ -1,4 +1,5 @@
 use crate::kernel::hart_local::HartLocal;
+use crate::kernel::task::table::TaskId;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TrapExecutionContext {
@@ -8,7 +9,7 @@ pub enum TrapExecutionContext {
 
 #[derive(Clone, Copy)]
 pub struct Cpu {
-    current: Option<usize>,
+    current: Option<TaskId>,
     kernel_sp_before_task: u64,
     current_stack_start: u64,
     current_stack_top: u64,
@@ -27,13 +28,13 @@ impl Cpu {
 
 static CPU: HartLocal<Cpu> = HartLocal::new(Cpu::new());
 
-pub fn current() -> Option<usize> {
+pub fn current() -> Option<TaskId> {
     CPU.with(|cpu| cpu.current)
 }
 
-pub fn set_current(id: usize) {
+pub fn set_current(id: TaskId) {
     CPU.with(|cpu| cpu.current = Some(id));
-    crate::kernel::hart_local::publish_u_tid(id as u64);
+    crate::kernel::hart_local::publish_u_tid(id.0);
 }
 
 pub fn clear_current() {

@@ -41,6 +41,18 @@ impl<T> HartLocal<T> {
             f(unsafe { &mut *self.slots[hart].get() })
         })
     }
+
+    /// Access raw slot pointer by hart index.
+    ///
+    /// # Safety
+    /// Caller must ensure that accessing slot `hart` does not violate single-hart mutability
+    /// invariants (e.g. only during hart 0 early boot setup or read-only metric collection).
+    pub unsafe fn slot_ptr(&self, hart: usize) -> *mut T {
+        if hart >= HART_SLOTS {
+            crate::arch::halt();
+        }
+        self.slots[hart].get()
+    }
 }
 
 pub fn hart_index() -> usize {

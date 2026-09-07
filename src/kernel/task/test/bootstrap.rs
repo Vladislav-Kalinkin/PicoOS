@@ -2,8 +2,9 @@ use crate::drivers::uart;
 
 pub fn print_task_zero_context_guard() {
     use crate::kernel::cpu::TrapExecutionContext;
+    use crate::kernel::task::table::TaskId;
 
-    crate::kernel::cpu::set_current(0);
+    crate::kernel::cpu::set_current(TaskId::new(1, 0, 0));
 
     let ok = matches!(
         crate::kernel::cpu::trap_execution_context(),
@@ -56,7 +57,7 @@ pub fn test_task_sleep_wakeup_table_selftest() {
     uart::write_str("  resumable at tick=2: ");
     match resumable_early {
         Some(id) => {
-            crate::drivers::uart::write_dec_u64(id as u64);
+            crate::drivers::uart::write_dec_u64(id.0);
             uart::write_line("");
         }
         None => uart::write_line("none"),
@@ -95,7 +96,7 @@ pub fn test_task_sleep_wakeup_table_selftest() {
     uart::write_str("  resumable at tick=3: ");
     match resumable_after_wake {
         Some(id) => {
-            crate::drivers::uart::write_dec_u64(id as u64);
+            crate::drivers::uart::write_dec_u64(id.0);
             uart::write_line("");
         }
         None => uart::write_line("none"),
@@ -205,4 +206,7 @@ fn test_task_sleep_wakeup_with_saved_image() {
     }
 }
 
-const _: &[fn()] = &[print_task_zero_context_guard, test_task_sleep_wakeup_table_selftest];
+const _: &[fn()] = &[
+    print_task_zero_context_guard,
+    test_task_sleep_wakeup_table_selftest,
+];

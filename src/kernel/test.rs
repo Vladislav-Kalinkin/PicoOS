@@ -77,10 +77,13 @@ fn test_reap_leak_check() {
         return;
     };
 
-    let reused = id2 == id;
-    uart::write_str("reaped id reused: ");
-    kernel::task::table::print_yes_no(reused);
-    uart::write_line("");
+    let reused = id2.local() == id.local();
+    uart::write_str("reaped local index reused: ");
+    if reused {
+        uart::write_str("yes\n");
+    } else {
+        uart::write_str("no\n");
+    }
 
     if !mark_task_finished(id2) || !destroy(id2) {
         uart::write_line("mm leak check: FAILED second reap");

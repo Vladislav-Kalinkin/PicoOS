@@ -71,11 +71,10 @@ fn handle_timer_interrupt(frame: &Riscv64TrapFrame) -> ! {
 
     let saved_sp = frame.sp;
     let saved_pc = cpu::mepc();
-    let saved_mstatus = cpu::mstatus();
 
     let interrupted_worker = crate::kernel::cpu::current();
     if let Some(id) = interrupted_worker {
-        let image = TrapImage::from_frame(frame, saved_pc, saved_mstatus);
+        let image = TrapImage::from_frame(frame, saved_pc);
         let _ = crate::kernel::task::table::save_preempted_trap_image(id, &image);
     }
 
@@ -144,10 +143,10 @@ fn handle_kernel_fault(frame: &Riscv64TrapFrame) -> ! {
 fn print_timer_tick_if_verbose(
     tick: u64,
     woke_tasks: usize,
-    interrupted_worker: Option<usize>,
+    interrupted_worker: Option<crate::kernel::task::table::TaskId>,
     saved_sp: u64,
     saved_pc: u64,
-    next: Option<usize>,
+    next: Option<crate::kernel::task::table::TaskId>,
 ) {
     if crate::kernel::contract::plan() != crate::kernel::contract::BootContract::Preempt {
         return;
